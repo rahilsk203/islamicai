@@ -1,8 +1,10 @@
 import { IslamicPrompt } from './islamic-prompt.js';
+import { APIKeyManager } from './api-key-manager.js';
 
 export class GeminiAPI {
-  constructor(apiKey) {
-    this.apiKey = apiKey;
+  constructor(apiKeys) {
+    // Support both single key and multiple keys
+    this.apiKeyManager = new APIKeyManager(apiKeys);
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
     this.islamicPrompt = new IslamicPrompt();
   }
@@ -48,20 +50,46 @@ ${debateFramework}` : ''}`;
       let detectedLanguage = languageInfo.detected_language || 'english';
       const shouldRespondInLanguage = languageInfo.should_respond_in_language || false;
       
-      // Fallback language detection if frontend detection failed
+      // Enhanced language detection with advanced patterns
       if (!languageInfo.detected_language || languageInfo.confidence < 50) {
-        console.log('Frontend language detection failed, using fallback detection');
-        // Simple fallback language detection
-        if (/[\u0900-\u097F]/.test(userInput)) {
-          detectedLanguage = 'hindi';
-        } else if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(userInput)) {
-          detectedLanguage = 'arabic';
-        } else if (/[a-zA-Z]/.test(userInput) && /[\u0900-\u097F]/.test(userInput)) {
+        console.log('Using advanced language detection in Gemini API');
+        
+        // Advanced pattern matching for better detection
+        const text = userInput.toLowerCase();
+        
+        // Hinglish detection (highest priority for mixed languages)
+        const hinglishScore = this.calculateHinglishScore(text);
+        if (hinglishScore > 0.3) {
           detectedLanguage = 'hinglish';
-        } else {
+        }
+        // Hindi detection
+        else if (/[\u0900-\u097F]/.test(userInput) || this.hasHindiKeywords(text)) {
+          detectedLanguage = 'hindi';
+        }
+        // Urdu detection (Arabic script with Urdu-specific characters)
+        else if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(userInput)) {
+          if (this.hasUrduKeywords(text)) {
+            detectedLanguage = 'urdu';
+          } else if (this.hasPersianKeywords(text)) {
+            detectedLanguage = 'persian';
+          } else {
+            detectedLanguage = 'arabic';
+          }
+        }
+        // Bengali detection
+        else if (/[\u0980-\u09FF]/.test(userInput)) {
+          detectedLanguage = 'bengali';
+        }
+        // Turkish detection
+        else if (/[çğıöşüÇĞIİÖŞÜ]/.test(userInput)) {
+          detectedLanguage = 'turkish';
+        }
+        // English (default)
+        else {
           detectedLanguage = 'english';
         }
-        console.log('Fallback language detection result:', detectedLanguage);
+        
+        console.log('Advanced language detection result:', detectedLanguage);
       }
       
       // Language-specific response instructions
@@ -148,23 +176,9 @@ You MUST respond in ${detectedLanguage}. Do not ask the user to switch languages
 
       console.log('Sending request to Gemini API:', JSON.stringify(requestBody, null, 2));
 
-      const response = await fetch(this.baseUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-goog-api-key': this.apiKey,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Gemini API Error Response:', errorText);
-        throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log('Gemini API Response:', JSON.stringify(data, null, 2));
+      // Use multi-API key system with retry logic
+      const response = await this.makeAPIRequestWithRetry(requestBody);
+      const data = response;
       
       if (data.candidates && data.candidates[0] && data.candidates[0].content) {
         let responseText = data.candidates[0].content.parts[0].text;
@@ -319,5 +333,168 @@ ${languageInstruction}
 - Use appropriate Islamic terminology for that language
 - Maintain scholarly tone in the detected language
 - Include proper greetings and blessings in the detected language`;
+  }
+
+  /**
+   * Calculate Hinglish score for advanced detection
+   */
+  calculateHinglishScore(text) {
+    let score = 0;
+    const totalWords = text.split(/\s+/).length;
+    
+    // Common Hinglish patterns
+    const hinglishPatterns = [
+      /main\s+[a-zA-Z]+\s+kar\s+raha\s+hun/gi,
+      /aap\s+[a-zA-Z]+\s+kar\s+sakte\s+hain/gi,
+      /ye\s+[a-zA-Z]+\s+ka\s+[a-zA-Z]+\s+hai/gi,
+      /[a-zA-Z]+\s+ke\s+liye/gi,
+      /[a-zA-Z]+\s+mein/gi,
+      /[a-zA-Z]+\s+se/gi,
+      /[a-zA-Z]+\s+ko/gi,
+      /[a-zA-Z]+\s+par/gi
+    ];
+    
+    // Check for Hinglish patterns
+    for (const pattern of hinglishPatterns) {
+      const matches = text.match(pattern) || [];
+      score += matches.length * 2;
+    }
+    
+    // Common Hinglish words
+    const hinglishWords = [
+      'main', 'aap', 'ye', 'wo', 'ham', 'tum', 'kar', 'raha', 'hun', 'hain', 'hai',
+      'ke', 'ki', 'ka', 'mein', 'se', 'ko', 'par', 'liye', 'aur', 'ya', 'lekin',
+      'kyunki', 'jab', 'tab', 'agar', 'to', 'phir', 'abhi', 'usne', 'hamne', 'aapne'
+    ];
+    
+    for (const word of hinglishWords) {
+      if (text.includes(word)) {
+        score += 1;
+      }
+    }
+    
+    return Math.min(score / totalWords, 1);
+  }
+
+  /**
+   * Check for Hindi keywords
+   */
+  hasHindiKeywords(text) {
+    const hindiKeywords = [
+      'है', 'हैं', 'का', 'के', 'की', 'में', 'से', 'को', 'पर', 'अल्लाह', 'इस्लाम',
+      'कुरान', 'हदीस', 'नमाज़', 'रोज़ा', 'ज़कात', 'हज', 'मस्जिद', 'इमाम'
+    ];
+    return hindiKeywords.some(keyword => text.includes(keyword));
+  }
+
+  /**
+   * Check for Urdu keywords
+   */
+  hasUrduKeywords(text) {
+    const urduKeywords = [
+      'ہے', 'ہیں', 'کا', 'کے', 'کی', 'میں', 'سے', 'کو', 'پر', 'اللہ', 'اسلام',
+      'قرآن', 'حدیث', 'نماز', 'روزہ', 'زکات', 'حج', 'مسجد', 'امام'
+    ];
+    return urduKeywords.some(keyword => text.includes(keyword));
+  }
+
+  /**
+   * Check for Persian keywords
+   */
+  hasPersianKeywords(text) {
+    const persianKeywords = [
+      'است', 'هستند', 'را', 'از', 'در', 'به', 'برای', 'این', 'آن', 'خدا',
+      'اسلام', 'قرآن', 'حدیث', 'نماز', 'روزه', 'زکات', 'حج', 'مسجد'
+    ];
+    return persianKeywords.some(keyword => text.includes(keyword));
+  }
+
+  /**
+   * Make API request with multi-key retry logic
+   * @param {Object} requestBody - The request body
+   * @returns {Promise<Object>} API response data
+   */
+  async makeAPIRequestWithRetry(requestBody) {
+    let lastError = null;
+    const maxRetries = this.apiKeyManager.maxRetries;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const apiKey = this.apiKeyManager.getNextKey();
+      
+      if (!apiKey) {
+        throw new Error('No available API keys');
+      }
+
+      try {
+        console.log(`Attempt ${attempt + 1}/${maxRetries} with API key: ${apiKey.substring(0, 10)}...`);
+        
+        const response = await fetch(this.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': apiKey,
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`API key ${apiKey.substring(0, 10)}... failed: ${response.status} ${response.statusText}`);
+          
+          // Mark key as failed
+          this.apiKeyManager.markKeyFailed(apiKey, `${response.status} ${response.statusText}`);
+          
+          // If it's a rate limit error, wait before retrying
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            const delay = retryAfter ? parseInt(retryAfter) * 1000 : this.apiKeyManager.retryDelay * (attempt + 1);
+            console.log(`Rate limited, waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+          
+          lastError = new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+          continue;
+        }
+
+        const data = await response.json();
+        
+        // Mark key as successful
+        this.apiKeyManager.markKeySuccess(apiKey);
+        
+        console.log('Gemini API Response:', JSON.stringify(data, null, 2));
+        return data;
+
+      } catch (error) {
+        console.error(`API key ${apiKey.substring(0, 10)}... error:`, error.message);
+        this.apiKeyManager.markKeyFailed(apiKey, error.message);
+        lastError = error;
+        
+        // Wait before retrying (exponential backoff)
+        if (attempt < maxRetries - 1) {
+          const delay = this.apiKeyManager.retryDelay * Math.pow(2, attempt);
+          console.log(`Waiting ${delay}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    // All attempts failed
+    console.error('All API keys failed. Key stats:', this.apiKeyManager.getKeyStats());
+    throw lastError || new Error('All API keys failed');
+  }
+
+  /**
+   * Get API key statistics
+   * @returns {Object} Key statistics
+   */
+  getKeyStats() {
+    return this.apiKeyManager.getKeyStats();
+  }
+
+  /**
+   * Reset failed keys
+   */
+  resetFailedKeys() {
+    this.apiKeyManager.resetFailedKeys();
   }
 }

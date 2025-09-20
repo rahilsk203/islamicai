@@ -2,9 +2,14 @@ import { useState, useEffect } from 'react';
 import './App.css';
 import ChatInterface from './components/ChatInterface';
 import Sidebar from './components/Sidebar';
-import { sendMessage, createNewSession, getRecentChats } from './utils/api';
+import { sendMessage } from './utils/api';
+import { useChatMemory, useAutoSave, useSessionManager } from './hooks/useChatMemory';
 
 function App() {
+  // Use custom hooks for better memory management
+  const { recentChats, saveChat, loadChat, refreshChats } = useChatMemory();
+  const { currentSessionId, sessionTitle, setSessionTitle, createNewSession, switchToSession } = useSessionManager();
+  
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -14,6 +19,22 @@ function App() {
     }
   ]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Remove the isSaving variable since we're not showing save status anymore
+  // const { isSaving } = useAutoSave(currentSessionId, messages, async (sessionId, msgs) => {
+  useAutoSave(currentSessionId, messages, async (sessionId, msgs) => {
+    // Only save if there's actual conversation (user + AI messages)
+    const userMessages = msgs.filter(msg => msg.sender === 'user');
+    const aiMessages = msgs.filter(msg => msg.sender === 'ai');
+    
+    if (userMessages.length > 0 && aiMessages.length > 1) {
+      const savedSession = await saveChat(sessionId, msgs);
+      if (savedSession) {
+        setSessionTitle(savedSession.title);
+      }
+    }
+  });
 
   // Debug sidebar state
   useEffect(() => {
@@ -24,14 +45,6 @@ function App() {
   useEffect(() => {
     window.recentMessages = messages;
   }, [messages]);
-  const [recentChats, setRecentChats] = useState([]);
-  const [sessionId, setSessionId] = useState(() => createNewSession());
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Load recent chats on component mount
-  useEffect(() => {
-    setRecentChats(getRecentChats());
-  }, []);
 
   const toggleSidebar = () => {
     console.log('Toggle sidebar clicked, current state:', isSidebarOpen);
@@ -47,16 +60,33 @@ function App() {
 
   const startNewChat = () => {
     const newSessionId = createNewSession();
-    setSessionId(newSessionId);
     
     setMessages([
       {
         id: Date.now(),
         sender: 'ai',
         content: "Assalamu Alaikum! 👋\n\nI'm IslamicAI, your advanced Islamic Scholar AI assistant. How can I help you today?",
-        timestamp: new Date()
+        timestamp: new Date() // Ensure timestamp is always a Date object
       }
     ]);
+    
+    // Close sidebar on mobile after starting new chat
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
+  };
+
+  const loadChatSession = (chatSessionId) => {
+    const session = loadChat(chatSessionId);
+    if (session) {
+      switchToSession(session.id, session.title);
+      setMessages(session.messages);
+      
+      // Close sidebar on mobile after loading chat
+      if (window.innerWidth < 768) {
+        setIsSidebarOpen(false);
+      }
+    }
   };
 
   const addMessage = async (content, sender = 'user') => {
@@ -70,7 +100,7 @@ function App() {
       id: Date.now(),
       sender,
       content: content.trim(),
-      timestamp: new Date()
+      timestamp: new Date() // Ensure timestamp is always a Date object
     };
     
     setMessages(prev => [...prev, newMessage]);
@@ -80,15 +110,15 @@ function App() {
       setIsLoading(true);
       
       try {
-        console.log('Sending message to backend:', { sessionId, content: content.trim() });
-        const response = await sendMessage(sessionId, content.trim());
+        console.log('Sending message to backend:', { sessionId: currentSessionId, content: content.trim() });
+        const response = await sendMessage(currentSessionId, content.trim());
         console.log('Received response from backend:', response);
         
         const aiMessage = {
           id: Date.now() + 1,
           sender: 'ai',
           content: response.reply || "I'm processing your request...",
-          timestamp: new Date()
+          timestamp: new Date() // Ensure timestamp is always a Date object
         };
         
         setMessages(prev => [...prev, aiMessage]);
@@ -99,7 +129,7 @@ function App() {
           id: Date.now() + 1,
           sender: 'ai',
           content: "Sorry, I encountered an error connecting to the backend. Please make sure the IslamicAI backend is running and try again.",
-          timestamp: new Date()
+          timestamp: new Date() // Ensure timestamp is always a Date object
         };
         setMessages(prev => [...prev, errorMessage]);
       } finally {
@@ -116,16 +146,14 @@ function App() {
         toggleSidebar={toggleSidebar}
         recentChats={recentChats}
         startNewChat={startNewChat}
+        loadChatSession={loadChatSession}
+        currentSessionId={currentSessionId}
       />
 
       {/* Main Chat Area with Enhanced Responsive Design */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
         {/* Mobile Header - Only visible on mobile */}
         <div className="md:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between relative z-50 sticky top-0 mobile-header-sticky">
-          {/* Debug Info - Only show on mobile */}
-          <div className="absolute top-0 left-0 right-0 bg-yellow-100 text-xs p-1 text-center z-10">
-            Mobile: Sidebar {isSidebarOpen ? 'OPEN' : 'CLOSED'} | Loading: {isLoading ? 'YES' : 'NO'}
-          </div>
           <div className="flex items-center space-x-3">
             <button
               onClick={(e) => {
@@ -152,13 +180,6 @@ function App() {
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <button
-              onClick={toggleSidebar}
-              className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all border border-red-200"
-              title="Test Sidebar Toggle"
-            >
-              <i className="fas fa-bars text-lg"></i>
-            </button>
             <button
               onClick={startNewChat}
               className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all"

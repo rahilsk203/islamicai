@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { detectLanguage, getLanguageTemplates } from '../utils/languageDetection.js';
+import { formatTimestamp } from '../utils/timestamp';
 
 const MessageBubble = ({ message, isStreaming = false }) => {
   const [displayedContent, setDisplayedContent] = useState(message.isStreaming ? '' : message.content);
@@ -190,7 +190,7 @@ const MessageBubble = ({ message, isStreaming = false }) => {
               <span className="text-xs font-medium text-gray-500">You</span>
             )}
             <span className="text-xs text-gray-400">
-              {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {formatTimestamp(message.timestamp)}
             </span>
           </div>
           
@@ -225,19 +225,7 @@ const MessageBubble = ({ message, isStreaming = false }) => {
                     </div>
                     <div className="flex items-center space-x-2">
                       <span className="text-sm font-medium text-gray-600">
-                        {(() => {
-                          // Detect language from recent messages to show appropriate loading text
-                          const recentMessages = window.recentMessages || [];
-                          if (recentMessages.length > 0) {
-                            const lastUserMessage = recentMessages.filter(m => m.sender === 'user').pop();
-                            if (lastUserMessage) {
-                              const languageDetection = detectLanguage(lastUserMessage.content);
-                              const templates = getLanguageTemplates(languageDetection.language);
-                              return templates.thinking;
-                            }
-                          }
-                          return "IslamicAI is researching...";
-                        })()}
+                        IslamicAI is thinking...
                       </span>
                       <div className="flex space-x-1">
                         <i className="fas fa-star text-amber-400 text-xs animate-pulse"></i>

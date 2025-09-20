@@ -1,70 +1,56 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { deleteChatSession, searchChatHistory, getChatStatistics } from '../utils/api';
+import { getRelativeTime } from '../utils/timestamp';
 
-const Sidebar = ({ isOpen, toggleSidebar, recentChats, startNewChat }) => {
+const Sidebar = ({ isOpen, toggleSidebar, recentChats, startNewChat, loadChatSession, currentSessionId }) => {
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [activeSection, setActiveSection] = useState('chats');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [chatStats, setChatStats] = useState(null);
 
-  const quickPrompts = [
-    { 
-      id: 1, 
-      text: "Five Pillars of Islam", 
-      prompt: "What are the five pillars of Islam?",
-      icon: "fas fa-star",
-      color: "from-emerald-500 to-teal-600"
-    },
-    { 
-      id: 2, 
-      text: "Concept of Tawheed", 
-      prompt: "Explain the concept of Tawheed",
-      icon: "fas fa-lightbulb",
-      color: "from-amber-500 to-orange-600"
-    },
-    { 
-      id: 3, 
-      text: "Life of Prophet Muhammad (PBUH)", 
-      prompt: "Tell me about the life of Prophet Muhammad (PBUH)",
-      icon: "fas fa-user-friends",
-      color: "from-blue-500 to-indigo-600"
-    },
-    { 
-      id: 4, 
-      text: "Quran on Patience", 
-      prompt: "What does the Quran say about patience?",
-      icon: "fas fa-heart",
-      color: "from-rose-500 to-pink-600"
-    },
-    { 
-      id: 5, 
-      text: "How to perform Wudu", 
-      prompt: "How to perform Wudu (ablution)?",
-      icon: "fas fa-hands-wash",
-      color: "from-cyan-500 to-blue-600"
+  // Load chat statistics when sidebar opens
+  useEffect(() => {
+    if (isOpen) {
+      const stats = getChatStatistics();
+      setChatStats(stats);
     }
-  ];
+  }, [isOpen, recentChats]);
 
-  const topicTags = [
-    { id: 1, name: "Qur'an", topic: "quran", icon: "fas fa-book-quran", color: "from-emerald-500 to-teal-600" },
-    { id: 2, name: "Hadith", topic: "hadith", icon: "fas fa-mosque", color: "from-blue-500 to-indigo-600" },
-    { id: 3, name: "Fiqh", topic: "fiqh", icon: "fas fa-balance-scale", color: "from-purple-500 to-violet-600" },
-    { id: 4, name: "Seerah", topic: "seerah", icon: "fas fa-star", color: "from-amber-500 to-orange-600" },
-    { id: 5, name: "Dua", topic: "dua", icon: "fas fa-hands-praying", color: "from-rose-500 to-pink-600" },
-    { id: 6, name: "Aqeedah", topic: "aqeedah", icon: "fas fa-heart", color: "from-cyan-500 to-blue-600" },
-    { id: 7, name: "Zakat", topic: "zakat", icon: "fas fa-coins", color: "from-green-500 to-emerald-600" },
-    { id: 8, name: "Hajj", topic: "hajj", icon: "fas fa-kaaba", color: "from-yellow-500 to-orange-600" }
-  ];
+  // Search functionality
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      setIsSearching(true);
+      const results = searchChatHistory(searchQuery);
+      setSearchResults(results);
+      setIsSearching(false);
+    } else {
+      setSearchResults([]);
+      setIsSearching(false);
+    }
+  }, [searchQuery]);
 
-  const languages = [
-    { code: 'en', name: 'English', flag: '🇺🇸' },
-    { code: 'hi', name: 'Hindi (हिंदी)', flag: '🇮🇳' },
-    { code: 'bn', name: 'Bengali (বাংলা)', flag: '🇧🇩' },
-    { code: 'ur', name: 'Urdu (اردو)', flag: '🇵🇰' },
-    { code: 'hinglish', name: 'Hinglish', flag: '🌐' }
-  ];
+  const handleDeleteChat = (chatId, event) => {
+    event.stopPropagation();
+    if (window.confirm('Are you sure you want to delete this chat?')) {
+      deleteChatSession(chatId);
+      // Refresh the recent chats list
+      window.location.reload(); // Simple way to refresh, could be optimized
+    }
+  };
 
-  const handlePromptClick = (prompt) => {
-    // In a real app, this would send the prompt to the chat
-    console.log("Prompt clicked:", prompt);
-    toggleSidebar();
+  const handleChatClick = (chatId) => {
+    loadChatSession(chatId);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  const formatDate = (dateString) => {
+    return getRelativeTime(dateString);
   };
 
   return (
@@ -130,31 +116,85 @@ const Sidebar = ({ isOpen, toggleSidebar, recentChats, startNewChat }) => {
             {/* Recent Chats Section */}
             {activeSection === 'chats' && (
               <div>
+                {/* Search Bar */}
+                <div className="mb-4">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search your chats..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-10 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 focus:bg-white transition-all"
+                    />
+                    <i className="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
+                    {searchQuery && (
+                      <button
+                        onClick={clearSearch}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <i className="fas fa-times text-sm"></i>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Chat Statistics */}
+                {chatStats && !searchQuery && (
+                  <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="text-center">
+                        <div className="font-semibold text-blue-700">{chatStats.totalSessions}</div>
+                        <div className="text-blue-600">Total Chats</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-semibold text-blue-700">{chatStats.totalMessages}</div>
+                        <div className="text-blue-600">Messages</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-semibold text-gray-700 flex items-center space-x-2">
                     <i className="fas fa-history text-blue-500"></i>
-                    <span>Recent Chats</span>
+                    <span>{searchQuery ? `Search Results (${searchResults.length})` : 'Recent Chats'}</span>
                   </h3>
-                  <button 
-                    onClick={startNewChat}
-                    className="p-1.5 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                  >
-                    <i className="fas fa-plus text-sm"></i>
-                  </button>
+                  {!searchQuery && (
+                    <button 
+                      onClick={startNewChat}
+                      className="p-1.5 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                      title="Start New Chat"
+                    >
+                      <i className="fas fa-plus text-sm"></i>
+                    </button>
+                  )}
                 </div>
+                
                 <div className="space-y-3">
-                  {recentChats.length > 0 ? (
-                    recentChats.map(chat => (
+                  {/* Show search results or recent chats */}
+                  {(searchQuery ? searchResults : recentChats).length > 0 ? (
+                    (searchQuery ? searchResults : recentChats).map(chat => (
                       <div 
                         key={chat.id}
-                        className="group p-4 rounded-2xl hover:bg-white hover:shadow-md cursor-pointer transition-all duration-300 border border-gray-100 hover:border-gray-200"
+                        onClick={() => handleChatClick(chat.id)}
+                        className={`group p-4 rounded-2xl hover:bg-white hover:shadow-md cursor-pointer transition-all duration-300 border hover:border-gray-200 relative ${
+                          currentSessionId === chat.id 
+                            ? 'bg-blue-50 border-blue-200 shadow-md' 
+                            : 'border-gray-100 bg-gray-50'
+                        }`}
                       >
                         <div className="flex items-start space-x-3">
-                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            currentSessionId === chat.id 
+                              ? 'bg-gradient-to-br from-blue-500 to-indigo-600' 
+                              : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                          }`}>
                             <i className="fas fa-comment text-white text-xs"></i>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm text-gray-800 truncate group-hover:text-gray-900">
+                            <div className={`font-medium text-sm truncate group-hover:text-gray-900 ${
+                              currentSessionId === chat.id ? 'text-blue-800' : 'text-gray-800'
+                            }`}>
                               {chat.title}
                             </div>
                             <div className="text-xs text-gray-500 truncate mt-1">
@@ -162,22 +202,50 @@ const Sidebar = ({ isOpen, toggleSidebar, recentChats, startNewChat }) => {
                             </div>
                             <div className="flex items-center space-x-2 mt-2">
                               <span className="text-xs text-gray-400">
-                                {new Date(chat.timestamp).toLocaleDateString()}
+                                {formatDate(chat.timestamp)}
                               </span>
                               <div className="w-1 h-1 bg-gray-300 rounded-full"></div>
-                              <span className="text-xs text-gray-400">2 min read</span>
+                              <span className="text-xs text-gray-400">
+                                {chat.messageCount || 0} messages
+                              </span>
                             </div>
                           </div>
+                          
+                          {/* Delete Button */}
+                          <button
+                            onClick={(e) => handleDeleteChat(chat.id, e)}
+                            className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Delete Chat"
+                          >
+                            <i className="fas fa-trash text-xs"></i>
+                          </button>
                         </div>
+                        
+                        {/* Current Session Indicator */}
+                        {currentSessionId === chat.id && (
+                          <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-1 h-8 bg-blue-500 rounded-r"></div>
+                        )}
                       </div>
                     ))
                   ) : (
                     <div className="text-center py-8">
                       <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                        <i className="fas fa-comments text-gray-400 text-xl"></i>
+                        <i className={`fas ${searchQuery ? 'fa-search' : 'fa-comments'} text-gray-400 text-xl`}></i>
                       </div>
-                      <p className="text-gray-500 text-sm">No recent chats</p>
-                      <p className="text-gray-400 text-xs mt-1">Start a new conversation</p>
+                      <p className="text-gray-500 text-sm">
+                        {searchQuery ? 'No chats found' : 'No recent chats'}
+                      </p>
+                      <p className="text-gray-400 text-xs mt-1">
+                        {searchQuery ? 'Try a different search term' : 'Start a new conversation'}
+                      </p>
+                      {!searchQuery && (
+                        <button
+                          onClick={startNewChat}
+                          className="mt-4 px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
+                        >
+                          Start New Chat
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

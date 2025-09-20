@@ -1,6 +1,7 @@
 import { GeminiAPI } from './gemini-api.js';
 import { AdvancedSessionManager } from './advanced-session-manager.js';
 import { CommandHandler } from './command-handler.js';
+import { AdvancedLanguageDetection } from './advanced-language-detection.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -14,6 +15,29 @@ export default {
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type',
           },
+        });
+      }
+
+      // Handle health check for API keys
+      if (request.method === 'GET' && url.pathname === '/health') {
+        const apiKeys = env.GEMINI_API_KEYS ? 
+          env.GEMINI_API_KEYS.split(',').map(key => key.trim()) : 
+          [env.GEMINI_API_KEY];
+        
+        const geminiAPI = new GeminiAPI(apiKeys);
+        const keyStats = geminiAPI.getKeyStats();
+        
+        return new Response(JSON.stringify({
+          status: 'healthy',
+          apiKeys: {
+            total: apiKeys.length,
+            available: geminiAPI.apiKeyManager.getAvailableKeyCount(),
+            stats: keyStats
+          },
+          timestamp: new Date().toISOString()
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
         });
       }
 
@@ -46,17 +70,48 @@ export default {
         });
       }
 
-      console.log('Received message with language info:', {
-        message: userMessage,
-        detectedLanguage: languageInfo.detected_language,
-        confidence: languageInfo.confidence,
-        shouldRespondInLanguage: languageInfo.should_respond_in_language
-      });
-
-      // Initialize managers
+      // Initialize managers first
       const sessionManager = new AdvancedSessionManager(env.CHAT_SESSIONS);
       const commandHandler = new CommandHandler();
-      const geminiAPI = new GeminiAPI(env.GEMINI_API_KEY);
+      
+      // Support multiple API keys
+      const apiKeys = env.GEMINI_API_KEYS ? 
+        env.GEMINI_API_KEYS.split(',').map(key => key.trim()) : 
+        [env.GEMINI_API_KEY];
+      
+      const geminiAPI = new GeminiAPI(apiKeys);
+      const languageDetector = new AdvancedLanguageDetection();
+
+      // Enhanced language detection with context
+      const sessionDataForDetection = await sessionManager.getSessionData(sessionId);
+      const context = {
+        previousLanguage: sessionDataForDetection?.userProfile?.preferredLanguage,
+        userProfile: sessionDataForDetection?.userProfile,
+        currentText: userMessage
+      };
+      
+      // Use advanced language detection if frontend detection is weak
+      let enhancedLanguageInfo = languageInfo;
+      if (!languageInfo.detected_language || languageInfo.confidence < 60) {
+        console.log('Using advanced backend language detection...');
+        const backendDetection = languageDetector.detectLanguage(userMessage, context);
+        enhancedLanguageInfo = {
+          detected_language: backendDetection.language,
+          confidence: backendDetection.confidence,
+          script: backendDetection.script,
+          should_respond_in_language: backendDetection.confidence > 50,
+          is_mixed_language: backendDetection.isMixedLanguage,
+          detected_scripts: backendDetection.detectedScripts,
+          analysis: backendDetection.analysis
+        };
+        console.log('Advanced language detection result:', enhancedLanguageInfo);
+      }
+
+      console.log('Received message with enhanced language info:', {
+        message: userMessage,
+        frontendDetection: languageInfo,
+        backendDetection: enhancedLanguageInfo
+      });
 
       // Check for commands
       if (userMessage.startsWith('/')) {
@@ -74,7 +129,7 @@ export default {
       const contextualPrompt = await sessionManager.getContextualPrompt(sessionId, userMessage);
       
       // Call Gemini API with enhanced prompt and language info
-      const geminiResponse = await geminiAPI.generateResponse([], sessionId, userMessage, contextualPrompt, languageInfo);
+      const geminiResponse = await geminiAPI.generateResponse([], sessionId, userMessage, contextualPrompt, enhancedLanguageInfo);
       
       // Process message and update session with intelligent memory
       const sessionData = await sessionManager.processMessage(sessionId, userMessage, geminiResponse);
