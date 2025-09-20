@@ -16,7 +16,8 @@ export class AdvancedSessionManager {
         memories: [],
         userProfile: {},
         conversationContext: {},
-        lastActivity: new Date().toISOString()
+        lastActivity: new Date().toISOString(),
+        conversationFlow: [] // Track conversation flow
       };
     } catch (error) {
       console.error('Error getting session data:', error);
@@ -25,7 +26,8 @@ export class AdvancedSessionManager {
         memories: [],
         userProfile: {},
         conversationContext: {},
-        lastActivity: new Date().toISOString()
+        lastActivity: new Date().toISOString(),
+        conversationFlow: []
       };
     }
   }
@@ -90,6 +92,14 @@ export class AdvancedSessionManager {
     
     // Update conversation context
     this.updateConversationContext(sessionData.conversationContext, userMessage, aiResponse);
+    
+    // Track conversation flow
+    this.updateConversationFlow(sessionData.conversationFlow, userMessage, aiResponse);
+    
+    // Maintain history length
+    if (sessionData.history.length > this.maxHistoryLength) {
+      sessionData.history = sessionData.history.slice(-this.maxHistoryLength);
+    }
     
     // Save updated session data
     await this.saveSessionData(sessionId, sessionData);
@@ -200,6 +210,40 @@ export class AdvancedSessionManager {
     }
   }
 
+  updateConversationFlow(conversationFlow, userMessage, aiResponse) {
+    // Track conversation progression and context shifts
+    const flowItem = {
+      userMessage: userMessage,
+      aiResponse: aiResponse,
+      userIntent: this.analyzeUserIntent(userMessage),
+      contextShift: this.detectContextShift(conversationFlow, userMessage),
+      timestamp: new Date().toISOString()
+    };
+    
+    conversationFlow.push(flowItem);
+    
+    // Keep only last 30 conversation turns
+    if (conversationFlow.length > 30) {
+      conversationFlow = conversationFlow.slice(-30);
+    }
+  }
+
+  detectContextShift(conversationFlow, newUserMessage) {
+    if (conversationFlow.length === 0) return false;
+    
+    // Get the last user message
+    const lastUserMessage = conversationFlow[conversationFlow.length - 1].userMessage;
+    
+    // Extract topics from both messages
+    const lastTopics = this.memory.extractIslamicTopics(lastUserMessage);
+    const newTopics = this.memory.extractIslamicTopics(newUserMessage);
+    
+    // Check if there's no overlap in topics
+    const hasOverlap = lastTopics.some(topic => newTopics.includes(topic));
+    
+    return !hasOverlap; // Context shift if no overlap
+  }
+
   analyzeUserIntent(message) {
     const lowerMessage = message.toLowerCase();
     
@@ -213,6 +257,8 @@ export class AdvancedSessionManager {
       return 'gratitude';
     } else if (lowerMessage.includes('why') || lowerMessage.includes('kyun')) {
       return 'reasoning';
+    } else if (lowerMessage.includes('how') || lowerMessage.includes('kaise')) {
+      return 'how-to';
     } else {
       return 'general';
     }
@@ -225,6 +271,8 @@ export class AdvancedSessionManager {
       return 'humble';
     } else if (response.includes('example') || response.includes('for instance')) {
       return 'explanatory';
+    } else if (response.includes('step') || response.includes('first') || response.includes('second')) {
+      return 'instructional';
     } else {
       return 'general';
     }
@@ -240,8 +288,19 @@ export class AdvancedSessionManager {
       5
     );
     
-    // Build contextual prompt
+    // Build contextual prompt with enhanced structure
     let contextualPrompt = this.buildBasePrompt(sessionData.userProfile);
+    
+    // Add conversation history context
+    if (sessionData.history.length > 0) {
+      contextualPrompt += '\n\n**Recent Conversation History:**\n';
+      // Include last 3 exchanges for immediate context
+      const recentHistory = sessionData.history.slice(-6); // 3 user+AI exchanges
+      recentHistory.forEach(msg => {
+        const role = msg.role === 'user' ? 'User' : 'IslamicAI';
+        contextualPrompt += `${role}: ${msg.content}\n`;
+      });
+    }
     
     // Add memory context
     if (relevantMemories.length > 0) {
@@ -262,6 +321,14 @@ export class AdvancedSessionManager {
       contextualPrompt += `\n**User's Current Emotional State:** ${sessionData.userProfile.currentEmotionalState}\n`;
     }
     
+    // Add conversation flow context
+    if (sessionData.conversationFlow.length > 0) {
+      const lastFlowItem = sessionData.conversationFlow[sessionData.conversationFlow.length - 1];
+      if (lastFlowItem.contextShift) {
+        contextualPrompt += '\n**Note:** The conversation topic has shifted. Please acknowledge this transition appropriately.\n';
+      }
+    }
+    
     return contextualPrompt;
   }
 
@@ -277,6 +344,7 @@ export class AdvancedSessionManager {
         'hinglish': 'Hinglish (Hindi + English mix)'
       };
       prompt += `\n**User's Preferred Language:** ${languageNames[userProfile.preferredLanguage] || userProfile.preferredLanguage}`;
+      prompt += `\n**IMPORTANT:** Always respond in the user's preferred language: ${languageNames[userProfile.preferredLanguage] || userProfile.preferredLanguage}. This is crucial for user experience.`;
     }
     
     if (userProfile.fiqhSchool) {
@@ -293,6 +361,15 @@ export class AdvancedSessionManager {
     
     if (userProfile.keyFacts && userProfile.keyFacts.location) {
       prompt += `\n**User's Location:** ${userProfile.keyFacts.location}`;
+    }
+    
+    // Add response style guidance based on user preferences
+    if (userProfile.responseStyle === 'detailed') {
+      prompt += '\n**Response Style:** Provide detailed explanations with examples and references.';
+    } else if (userProfile.responseStyle === 'brief') {
+      prompt += '\n**Response Style:** Provide concise answers while maintaining scholarly accuracy.';
+    } else {
+      prompt += '\n**Response Style:** Provide balanced responses with appropriate detail.';
     }
     
     return prompt;

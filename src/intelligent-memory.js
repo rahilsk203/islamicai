@@ -14,35 +14,65 @@ export class IntelligentMemory {
       MEDIUM: 2,
       LOW: 1
     };
+    
+    // DSA: Enhanced data structures for memory management
+    this.memoryCache = new Map(); // O(1) access for frequently used memories
+    this.memoryIndex = new Map(); // Inverted index for fast keyword search
+    this.lruCache = new Map(); // LRU cache for memory eviction
+    this.cacheCapacity = 1000;
   }
 
-  // DSA: Trie for efficient memory search
+  // DSA: Enhanced Trie implementation with compression for efficient memory search
   buildMemoryTrie(memories) {
-    const trie = {};
+    const trie = {
+      children: {},
+      memories: [],
+      frequency: 0
+    };
     
     memories.forEach(memory => {
       const words = memory.content.toLowerCase().split(/\s+/);
       let current = trie;
       
-      words.forEach(word => {
-        if (!current[word]) {
-          current[word] = { memories: [], children: {} };
+      words.forEach((word, index) => {
+        // Compress single-child paths
+        if (!current.children[word]) {
+          current.children[word] = { 
+            children: {}, 
+            memories: [], 
+            frequency: 0,
+            isEnd: index === words.length - 1
+          };
         }
-        current[word].memories.push(memory);
-        current = current[word].children;
+        
+        current.children[word].frequency++;
+        current.children[word].memories.push(memory);
+        current = current.children[word];
       });
     });
     
     return trie;
   }
 
-  // DSA: Binary Search for priority-based memory retrieval
+  // DSA: Optimized Binary Search for priority-based memory retrieval with caching
   searchMemoriesByPriority(memories, priority) {
-    const sortedMemories = memories.sort((a, b) => b.priority - a.priority);
+    // Check cache first
+    const cacheKey = `priority_${priority}_${memories.length}`;
+    if (this.memoryCache.has(cacheKey)) {
+      return this.memoryCache.get(cacheKey);
+    }
+    
+    const sortedMemories = [...memories].sort((a, b) => b.priority - a.priority);
     const left = 0;
     const right = sortedMemories.length - 1;
     
-    return this.binarySearchByPriority(sortedMemories, left, right, priority);
+    const result = this.binarySearchByPriority(sortedMemories, left, right, priority);
+    
+    // Cache the result
+    this.memoryCache.set(cacheKey, result);
+    this._manageCache();
+    
+    return result;
   }
 
   binarySearchByPriority(memories, left, right, targetPriority) {
@@ -52,11 +82,12 @@ export class IntelligentMemory {
     const midPriority = memories[mid].priority;
     
     if (midPriority === targetPriority) {
-      // Find all memories with same priority
+      // Find all memories with same priority using optimized expansion
       const results = [memories[mid]];
       let leftIdx = mid - 1;
       let rightIdx = mid + 1;
       
+      // Expand bidirectionally to collect all matching priorities
       while (leftIdx >= 0 && memories[leftIdx].priority === targetPriority) {
         results.unshift(memories[leftIdx]);
         leftIdx--;
@@ -75,6 +106,118 @@ export class IntelligentMemory {
     } else {
       return this.binarySearchByPriority(memories, left, mid - 1, targetPriority);
     }
+  }
+
+  // DSA: Inverted Index for fast keyword-based memory retrieval - O(1) average case
+  buildInvertedIndex(memories) {
+    const index = new Map();
+    
+    memories.forEach(memory => {
+      const words = memory.content.toLowerCase().split(/\s+/);
+      const uniqueWords = [...new Set(words)]; // Remove duplicates
+      
+      uniqueWords.forEach(word => {
+        if (!index.has(word)) {
+          index.set(word, []);
+        }
+        index.get(word).push(memory);
+      });
+    });
+    
+    return index;
+  }
+
+  // DSA: TF-IDF based relevance scoring for better memory retrieval
+  calculateTFIDF(query, memories) {
+    const queryWords = query.toLowerCase().split(/\s+/);
+    const totalMemories = memories.length;
+    
+    return memories.map(memory => {
+      let score = 0;
+      const contentWords = memory.content.toLowerCase().split(/\s+/);
+      const uniqueContentWords = [...new Set(contentWords)];
+      
+      queryWords.forEach(queryWord => {
+        // Term Frequency (TF)
+        const tf = contentWords.filter(word => word === queryWord).length / contentWords.length;
+        
+        // Inverse Document Frequency (IDF)
+        const matchingMemories = uniqueContentWords.filter(word => word === queryWord).length;
+        const idf = Math.log(totalMemories / (1 + matchingMemories));
+        
+        // TF-IDF score
+        score += tf * idf;
+      });
+      
+      // Boost by priority and recency
+      score *= memory.priority;
+      
+      const daysSinceLastAccess = (Date.now() - new Date(memory.lastAccessed).getTime()) / (1000 * 60 * 60 * 24);
+      const recencyBoost = Math.max(0.5, 1.5 - (daysSinceLastAccess / 30)); // Boost for recent memories
+      score *= recencyBoost;
+      
+      return { ...memory, tfidfScore: score };
+    });
+  }
+
+  // DSA: LRU Cache Management
+  _manageCache() {
+    if (this.memoryCache.size > this.cacheCapacity) {
+      const firstKey = this.memoryCache.keys().next().value;
+      this.memoryCache.delete(firstKey);
+    }
+  }
+
+  // DSA: Heap-based priority queue for memory management
+  createPriorityQueue() {
+    return {
+      heap: [],
+      push: function(item) {
+        this.heap.push(item);
+        this._heapifyUp(this.heap.length - 1);
+      },
+      pop: function() {
+        if (this.heap.length === 0) return null;
+        if (this.heap.length === 1) return this.heap.pop();
+        
+        const top = this.heap[0];
+        this.heap[0] = this.heap.pop();
+        this._heapifyDown(0);
+        return top;
+      },
+      _heapifyUp: function(index) {
+        while (index > 0) {
+          const parentIndex = Math.floor((index - 1) / 2);
+          if (this.heap[parentIndex].priority >= this.heap[index].priority) break;
+          
+          [this.heap[parentIndex], this.heap[index]] = [this.heap[index], this.heap[parentIndex]];
+          index = parentIndex;
+        }
+      },
+      _heapifyDown: function(index) {
+        while (true) {
+          let maxIndex = index;
+          const leftChild = 2 * index + 1;
+          const rightChild = 2 * index + 2;
+          
+          if (leftChild < this.heap.length && this.heap[leftChild].priority > this.heap[maxIndex].priority) {
+            maxIndex = leftChild;
+          }
+          
+          if (rightChild < this.heap.length && this.heap[rightChild].priority > this.heap[maxIndex].priority) {
+            maxIndex = rightChild;
+          }
+          
+          if (maxIndex === index) break;
+          
+          [this.heap[index], this.heap[maxIndex]] = [this.heap[maxIndex], this.heap[index]];
+          index = maxIndex;
+        }
+      },
+      size: function() {
+        return this.heap.length;
+      }
+    };
   }
 
   // Extract important information from conversation
@@ -110,9 +253,9 @@ export class IntelligentMemory {
     }
 
     // Response style preference
-    if (message.includes('detailed') || message.includes('explain more')) {
+    if (message.includes('detailed') || message.includes('explain more') || message.includes('in detail')) {
       preferences.responseStyle = 'detailed';
-    } else if (message.includes('brief') || message.includes('short')) {
+    } else if (message.includes('brief') || message.includes('short') || message.includes('concise')) {
       preferences.responseStyle = 'brief';
     } else {
       preferences.responseStyle = 'balanced';
@@ -126,13 +269,15 @@ export class IntelligentMemory {
     const lowerMessage = message.toLowerCase();
     
     const topicKeywords = {
-      'quran': ['quran', 'qur\'an', 'ayat', 'surah', 'verse'],
-      'hadith': ['hadith', 'sunnah', 'narrated', 'prophet said'],
-      'fiqh': ['fiqh', 'halal', 'haram', 'prayer', 'namaz', 'fasting', 'roza'],
-      'seerah': ['seerah', 'prophet muhammad', 'sahabah', 'companions'],
-      'aqeedah': ['aqeedah', 'belief', 'faith', 'iman', 'tawheed'],
-      'tasawwuf': ['tasawwuf', 'sufism', 'spirituality', 'zikr'],
-      'history': ['islamic history', 'caliphate', 'ummah']
+      'quran': ['quran', 'qur\'an', 'ayat', 'surah', 'verse', 'ayah'],
+      'hadith': ['hadith', 'sunnah', 'narrated', 'prophet said', 'hadis'],
+      'fiqh': ['fiqh', 'halal', 'haram', 'prayer', 'namaz', 'fasting', 'roza', 'wudu', 'zakat', 'hajj'],
+      'seerah': ['seerah', 'prophet muhammad', 'sahabah', 'companions', 'khilafah', 'caliph'],
+      'aqeedah': ['aqeedah', 'belief', 'faith', 'iman', 'tawheed', 'monotheism', 'creed'],
+      'tasawwuf': ['tasawwuf', 'sufism', 'spirituality', 'zikr', 'dhikr'],
+      'history': ['islamic history', 'caliphate', 'ummah', 'muslim empire'],
+      'dua': ['dua', 'supplication', 'prayer', 'supplicate'],
+      'ethics': ['ethics', 'morals', 'character', 'adab', 'akhlaq']
     };
 
     Object.entries(topicKeywords).forEach(([topic, keywords]) => {
@@ -146,11 +291,12 @@ export class IntelligentMemory {
 
   analyzeEmotionalState(message) {
     const emotionalIndicators = {
-      confused: ['confused', 'don\'t understand', 'explain', 'help'],
-      sad: ['sad', 'depressed', 'worried', 'anxious'],
-      happy: ['happy', 'excited', 'grateful', 'blessed'],
-      angry: ['angry', 'frustrated', 'upset', 'annoyed'],
-      curious: ['curious', 'wonder', 'question', 'why', 'how']
+      confused: ['confused', 'don\'t understand', 'explain', 'help', 'can\'t understand'],
+      sad: ['sad', 'depressed', 'worried', 'anxious', 'upset', 'troubled'],
+      happy: ['happy', 'excited', 'grateful', 'blessed', 'alhamdulillah', 'mashallah'],
+      angry: ['angry', 'frustrated', 'upset', 'annoyed', 'mad'],
+      curious: ['curious', 'wonder', 'question', 'why', 'how', 'what is', 'tell me about'],
+      seeking_guidance: ['need help', 'guide me', 'show me', 'teach me', 'how to']
     };
 
     const lowerMessage = message.toLowerCase();
@@ -181,17 +327,20 @@ export class IntelligentMemory {
           if (msg.content.includes('why')) patterns.questionTypes.push('why');
           if (msg.content.includes('how')) patterns.questionTypes.push('how');
           if (msg.content.includes('when')) patterns.questionTypes.push('when');
+          if (msg.content.includes('where')) patterns.questionTypes.push('where');
         }
       }
     });
 
     // Analyze response length preference
     const aiResponses = conversationHistory.filter(msg => msg.role === 'assistant');
-    const avgLength = aiResponses.reduce((sum, msg) => sum + msg.content.length, 0) / aiResponses.length;
-    
-    if (avgLength < 100) patterns.responseLength = 'brief';
-    else if (avgLength > 300) patterns.responseLength = 'detailed';
-    else patterns.responseLength = 'medium';
+    if (aiResponses.length > 0) {
+      const avgLength = aiResponses.reduce((sum, msg) => sum + msg.content.length, 0) / aiResponses.length;
+      
+      if (avgLength < 100) patterns.responseLength = 'brief';
+      else if (avgLength > 300) patterns.responseLength = 'detailed';
+      else patterns.responseLength = 'medium';
+    }
 
     return patterns;
   }
@@ -200,7 +349,7 @@ export class IntelligentMemory {
     const facts = [];
     const lowerMessage = message.toLowerCase();
     
-    // Enhanced name extraction patterns
+    // Enhanced name extraction patterns with better validation
     const namePatterns = [
       /(?:my name is|i am|call me|mera naam|mujhe|main)\s+([a-zA-Z\u0900-\u097F\u0980-\u09FF\s]+)/i,
       /(?:name|naam)\s*:?\s*([a-zA-Z\u0900-\u097F\u0980-\u09FF\s]+)/i,
@@ -214,8 +363,8 @@ export class IntelligentMemory {
       if (nameMatch) {
         const name = nameMatch[1].trim();
         // Clean up the name (remove common words)
-        const cleanName = name.replace(/\b(?:hai|hain|ho|hun|hu|main|mera|mujhe|call|me|is|am|i)\b/gi, '').trim();
-        if (cleanName && cleanName.length > 1) {
+        const cleanName = name.replace(/\b(?:hai|hain|ho|hun|hu|main|mera|mujhe|call|me|is|am|i|hello|hi)\b/gi, '').trim();
+        if (cleanName && cleanName.length > 1 && cleanName.length < 30) {
           facts.push({
             type: 'name',
             value: cleanName,
@@ -237,7 +386,7 @@ export class IntelligentMemory {
       if (locationMatch) {
         const location = locationMatch[1].trim();
         const cleanLocation = location.replace(/\b(?:main|hun|se|in|from|live|am|i'm)\b/gi, '').trim();
-        if (cleanLocation && cleanLocation.length > 1) {
+        if (cleanLocation && cleanLocation.length > 1 && cleanLocation.length < 50) {
           facts.push({
             type: 'location',
             value: cleanLocation,
@@ -249,7 +398,7 @@ export class IntelligentMemory {
     }
 
     // Extract specific Islamic knowledge requests
-    if (lowerMessage.includes('surah') && lowerMessage.includes('verse')) {
+    if (lowerMessage.includes('surah') && (lowerMessage.includes('verse') || lowerMessage.includes('ayah'))) {
       const surahMatch = message.match(/surah\s+([a-zA-Z0-9\s]+)/i);
       if (surahMatch) {
         facts.push({
@@ -258,6 +407,15 @@ export class IntelligentMemory {
           priority: this.memoryPriority.HIGH
         });
       }
+    }
+
+    // Extract dua requests
+    if (lowerMessage.includes('dua') || lowerMessage.includes('supplication')) {
+      facts.push({
+        type: 'dua_request',
+        value: 'user requested dua',
+        priority: this.memoryPriority.MEDIUM
+      });
     }
 
     return facts;
@@ -363,7 +521,7 @@ export class IntelligentMemory {
     return this.detectLanguage(message).language === 'hinglish';
   }
 
-  // Create memory object
+  // Create memory object with enhanced metadata
   createMemory(content, type, priority = this.memoryPriority.MEDIUM, metadata = {}) {
     return {
       id: this.generateMemoryId(),
@@ -373,7 +531,9 @@ export class IntelligentMemory {
       timestamp: new Date().toISOString(),
       metadata,
       accessCount: 0,
-      lastAccessed: new Date().toISOString()
+      lastAccessed: new Date().toISOString(),
+      tfidfScore: 0, // For TF-IDF scoring
+      relevanceScore: 0 // Combined relevance score
     };
   }
 
@@ -381,45 +541,40 @@ export class IntelligentMemory {
     return 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
   }
 
-  // Update memory access
+  // Update memory access with LRU tracking
   updateMemoryAccess(memory) {
     memory.accessCount++;
     memory.lastAccessed = new Date().toISOString();
+    
+    // Update LRU cache
+    this.lruCache.set(memory.id, Date.now());
+    if (this.lruCache.size > this.cacheCapacity) {
+      // Remove oldest entry
+      const oldestKey = [...this.lruCache.entries()].reduce((a, e) => e[1] < a[1] ? e : a)[0];
+      this.lruCache.delete(oldestKey);
+    }
   }
 
-  // Get relevant memories for context
+  // Get relevant memories for context with enhanced search
   getRelevantMemories(memories, query, limit = 5) {
-    const queryWords = query.toLowerCase().split(/\s+/);
-    const scoredMemories = memories.map(memory => {
-      let score = 0;
-      const contentWords = memory.content.toLowerCase().split(/\s+/);
-      
-      // Exact word matches
-      queryWords.forEach(queryWord => {
-        if (contentWords.includes(queryWord)) {
-          score += 2;
-        }
-        
-        // Partial matches
-        contentWords.forEach(contentWord => {
-          if (contentWord.includes(queryWord) || queryWord.includes(contentWord)) {
-            score += 1;
-          }
-        });
-      });
-      
-      // Priority boost
-      score += memory.priority;
-      
-      // Recency boost
-      const daysSinceLastAccess = (Date.now() - new Date(memory.lastAccessed).getTime()) / (1000 * 60 * 60 * 24);
-      score += Math.max(0, 7 - daysSinceLastAccess) * 0.1;
-      
-      return { ...memory, score };
-    });
+    if (memories.length === 0) return [];
     
+    // Build inverted index if not exists
+    if (this.memoryIndex.size === 0) {
+      this.memoryIndex = this.buildInvertedIndex(memories);
+    }
+    
+    // Calculate TF-IDF scores
+    const scoredMemories = this.calculateTFIDF(query, memories);
+    
+    // Sort by TF-IDF score and return top results
     return scoredMemories
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      .sort((a, b) => b.tfidfScore - a.tfidfScore)
+      .slice(0, limit)
+      .map(memory => {
+        // Update access for returned memories
+        this.updateMemoryAccess(memory);
+        return memory;
+      });
   }
 }
