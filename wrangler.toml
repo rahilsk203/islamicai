@@ -1,0 +1,26 @@
+name = "islamicai"
+main = "src/index.js"
+compatibility_date = "2024-01-15"
+
+[env.production]
+name = "islamicai"
+
+[env.staging]
+name = "islamicai"
+
+# KV Namespace for session storage
+[[kv_namespaces]]
+binding = "CHAT_SESSIONS"
+id = "2fbc40a619a14fef9a07cbfbffa92827"
+preview_id = "2fbc40a619a14fef9a07cbfbffa92827"
+
+# Environment variables
+[vars]
+# Add your Gemini API key here
+GEMINI_API_KEY = "AIzaSyCGpimrLEZrz-rN6yVKfvTHG4G1dpOb_fc"
+
+# Optional: Custom domain
+# [env.production]
+# routes = [
+#   { pattern = "chat.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]

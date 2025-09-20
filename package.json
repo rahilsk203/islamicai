@@ -1,0 +1,30 @@
+{
+  "name": "islamicai-chat-worker",
+  "version": "1.0.0",
+  "description": "AI-powered chat assistant Cloudflare Worker with session management",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "kv:create": "wrangler kv:namespace create CHAT_SESSIONS",
+    "kv:create:preview": "wrangler kv:namespace create CHAT_SESSIONS --preview"
+  },
+  "keywords": [
+    "cloudflare-worker",
+    "ai-chat",
+    "gemini-api",
+    "session-management",
+    "multilingual"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240117.0",
+    "wrangler": "^3.78.12"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
