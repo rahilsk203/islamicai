@@ -37,6 +37,7 @@ export default {
 
       const body = await request.json();
       const userMessage = body.message;
+      const languageInfo = body.language_info || {};
       
       if (!userMessage) {
         return new Response(JSON.stringify({ error: 'Message required' }), {
@@ -44,6 +45,13 @@ export default {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+
+      console.log('Received message with language info:', {
+        message: userMessage,
+        detectedLanguage: languageInfo.detected_language,
+        confidence: languageInfo.confidence,
+        shouldRespondInLanguage: languageInfo.should_respond_in_language
+      });
 
       // Initialize managers
       const sessionManager = new AdvancedSessionManager(env.CHAT_SESSIONS);
@@ -65,8 +73,8 @@ export default {
       // Get contextual prompt with memory
       const contextualPrompt = await sessionManager.getContextualPrompt(sessionId, userMessage);
       
-      // Call Gemini API with enhanced prompt
-      const geminiResponse = await geminiAPI.generateResponse([], sessionId, userMessage, contextualPrompt);
+      // Call Gemini API with enhanced prompt and language info
+      const geminiResponse = await geminiAPI.generateResponse([], sessionId, userMessage, contextualPrompt, languageInfo);
       
       // Process message and update session with intelligent memory
       const sessionData = await sessionManager.processMessage(sessionId, userMessage, geminiResponse);

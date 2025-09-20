@@ -70,18 +70,16 @@ const Sidebar = ({ isOpen, toggleSidebar, recentChats, startNewChat }) => {
   return (
     <>
       {/* Enhanced Sidebar Overlay */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20 md:hidden transition-opacity duration-300"
-          onClick={toggleSidebar}
-        ></div>
-      )}
+      <div 
+        className={`sidebar-overlay md:hidden ${isOpen ? 'open' : ''}`}
+        onClick={toggleSidebar}
+      ></div>
 
       {/* Modern Sidebar */}
       <aside 
-        className={`bg-white shadow-lg border-r border-gray-200 w-72 flex-shrink-0 transform transition-all duration-300 ease-in-out z-30
+        className={`bg-white shadow-lg border-r border-gray-200 w-72 sm:w-80 flex-shrink-0 transform transition-all duration-300 ease-in-out z-50
           ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
-          md:translate-x-0 md:static absolute inset-y-0 left-0`}
+          md:translate-x-0 md:static fixed inset-y-0 left-0 sidebar-mobile ${isOpen ? 'open' : ''}`}
       >
         <div className="flex flex-col h-full">
           {/* Header */}

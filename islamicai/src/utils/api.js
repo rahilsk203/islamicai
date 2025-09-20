@@ -1,23 +1,38 @@
 // API utility functions for connecting to the IslamicAI backend
+import { enhanceMessageWithLanguage } from './languageDetection.js';
 
-const API_BASE_URL = 'http://127.0.0.1:8787'; // Default local development URL
+const API_BASE_URL = 'https://islamicai.sohal70760.workers.dev'; // Default local development URL
 
 /**
- * Send a message to the IslamicAI backend
+ * Send a message to the IslamicAI backend with language detection
  * @param {string} sessionId - The session ID for this conversation
  * @param {string} message - The user's message
  * @returns {Promise<Object>} The response from the backend
  */
 export const sendMessage = async (sessionId, message) => {
   try {
-    console.log('Sending message to backend:', { sessionId, message });
+    // Detect language and enhance message
+    const languageInfo = enhanceMessageWithLanguage(message);
+    console.log('Language detection result:', languageInfo);
+    
+    const requestBody = {
+      message: message,
+      language_info: {
+        detected_language: languageInfo.detectedLanguage,
+        confidence: languageInfo.confidence,
+        script: languageInfo.script,
+        should_respond_in_language: languageInfo.shouldRespondInLanguage
+      }
+    };
+    
+    console.log('Sending message to backend:', { sessionId, message, languageInfo: languageInfo.detectedLanguage });
     
     const response = await fetch(`${API_BASE_URL}?session_id=${sessionId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ message: message })
+      body: JSON.stringify(requestBody)
     });
 
     console.log('Backend response status:', response.status);
