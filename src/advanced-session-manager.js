@@ -1,4 +1,5 @@
 import { IntelligentMemory } from './intelligent-memory.js';
+import { PerformanceOptimizer } from './performance-optimizer.js';
 
 export class AdvancedSessionManager {
   constructor(kvNamespace) {
@@ -6,12 +7,19 @@ export class AdvancedSessionManager {
     this.maxHistoryLength = 50; // Increased for better context
     this.maxMemoryItems = 100;
     this.memory = new IntelligentMemory();
+    this.performanceOptimizer = new PerformanceOptimizer();
   }
 
   async getSessionData(sessionId) {
     try {
+      // ⚡ Try DSA-optimized session cache first (O(1) lookup)
+      const cachedSession = await this.performanceOptimizer.getCachedSession(sessionId);
+      if (cachedSession) {
+        console.log('⚡ Retrieved session from DSA cache (ultra-fast)');
+        return cachedSession;
+      }
       const sessionData = await this.kv.get(`session:${sessionId}`);
-      return sessionData ? JSON.parse(sessionData) : {
+      const data = sessionData ? JSON.parse(sessionData) : {
         history: [],
         memories: [],
         userProfile: {},
@@ -19,6 +27,11 @@ export class AdvancedSessionManager {
         lastActivity: new Date().toISOString(),
         conversationFlow: [] // Track conversation flow
       };
+      
+      // ⚡ Cache session data for future O(1) retrieval
+      await this.performanceOptimizer.cacheSession(sessionId, data);
+      
+      return data;
     } catch (error) {
       console.error('Error getting session data:', error);
       return {
@@ -37,30 +50,50 @@ export class AdvancedSessionManager {
       // Update last activity
       sessionData.lastActivity = new Date().toISOString();
       
+      // ⚡ Apply DSA-based session optimization
+      const optimizedSessionData = await this.performanceOptimizer.optimizeSessionData(sessionData);
+      
       // Limit memory items
-      if (sessionData.memories.length > this.maxMemoryItems) {
-        sessionData.memories = this.prioritizeMemories(sessionData.memories)
+      if (optimizedSessionData.memories.length > this.maxMemoryItems) {
+        optimizedSessionData.memories = this.prioritizeMemories(optimizedSessionData.memories)
           .slice(0, this.maxMemoryItems);
       }
       
-      await this.kv.put(`session:${sessionId}`, JSON.stringify(sessionData), {
+      await this.kv.put(`session:${sessionId}`, JSON.stringify(optimizedSessionData), {
         expirationTtl: 86400 * 30 // 30 days
       });
+      
+      // ⚡ Update DSA cache with optimized data
+      await this.performanceOptimizer.cacheSession(sessionId, optimizedSessionData);
+      
+      console.log('⚡ Session saved with DSA optimization');
     } catch (error) {
       console.error('Error saving session data:', error);
     }
   }
 
   /**
-   * Get recent messages for adaptive language system
+   * Get recent messages for adaptive language system with DSA optimization
    * @param {string} sessionId - Session identifier
    * @param {number} limit - Number of recent messages to retrieve
    * @returns {Array} Recent messages
    */
   async getRecentMessages(sessionId, limit = 5) {
     try {
+      // ⚡ Try DSA-optimized recent messages cache first
+      const cachedMessages = await this.performanceOptimizer.getCachedRecentMessages(sessionId, limit);
+      if (cachedMessages) {
+        console.log('⚡ Retrieved recent messages from DSA cache');
+        return cachedMessages;
+      }
+      
       const sessionData = await this.getSessionData(sessionId);
-      return sessionData.history.slice(-limit);
+      const recentMessages = sessionData.history.slice(-limit);
+      
+      // ⚡ Cache recent messages for future fast retrieval
+      await this.performanceOptimizer.cacheRecentMessages(sessionId, recentMessages);
+      
+      return recentMessages;
     } catch (error) {
       console.error('Error getting recent messages:', error);
       return [];
@@ -92,27 +125,42 @@ export class AdvancedSessionManager {
   }
 
   async processMessage(sessionId, userMessage, aiResponse) {
+    const startTime = Date.now();
+    
+    // ⚡ Apply DSA-based message preprocessing
+    const preprocessedData = await this.performanceOptimizer.preprocessMessage(
+      userMessage, 
+      aiResponse, 
+      sessionId
+    );
+    
     const sessionData = await this.getSessionData(sessionId);
     
-    // Add messages to history
+    // Add messages to history with DSA optimization hints
     const userMessageObj = {
       role: 'user',
       content: userMessage,
       timestamp: new Date().toISOString(),
-      session_id: sessionId
+      session_id: sessionId,
+      processingHints: preprocessedData.userHints
     };
     
     const aiMessageObj = {
       role: 'assistant',
       content: aiResponse,
       timestamp: new Date().toISOString(),
-      session_id: sessionId
+      session_id: sessionId,
+      processingHints: preprocessedData.aiHints
     };
     
     sessionData.history.push(userMessageObj, aiMessageObj);
     
-    // Extract and store important information
-    const importantInfo = this.memory.extractImportantInfo(userMessage, sessionData.history);
+    // ⚡ Extract important info with DSA optimization
+    const importantInfo = await this.performanceOptimizer.optimizeInformationExtraction(
+      userMessage, 
+      sessionData.history,
+      this.memory
+    );
     
     // Update user profile
     this.updateUserProfile(sessionData.userProfile, importantInfo);
@@ -132,9 +180,17 @@ export class AdvancedSessionManager {
       sessionData.history = sessionData.history.slice(-this.maxHistoryLength);
     }
     
-    // Save updated session data
+    // Save updated session data with performance metrics
+    const processingTime = Date.now() - startTime;
+    sessionData.performanceMetrics = {
+      lastProcessingTime: processingTime,
+      dsaOptimized: true,
+      timestamp: new Date().toISOString()
+    };
+    
     await this.saveSessionData(sessionId, sessionData);
     
+    console.log(`⚡ Message processed with DSA optimization in ${processingTime}ms`);
     return sessionData;
   }
 
@@ -310,17 +366,34 @@ export class AdvancedSessionManager {
   }
 
   async getContextualPrompt(sessionId, userMessage) {
+    const startTime = Date.now();
+    
+    // ⚡ Try DSA-optimized contextual prompt cache first
+    const cachedPrompt = await this.performanceOptimizer.getCachedContextualPrompt(
+      sessionId, 
+      userMessage
+    );
+    
+    if (cachedPrompt) {
+      console.log('⚡ Retrieved contextual prompt from DSA cache (ultra-fast)');
+      return cachedPrompt;
+    }
+    
     const sessionData = await this.getSessionData(sessionId);
     
-    // Get relevant memories
-    const relevantMemories = this.memory.getRelevantMemories(
-      sessionData.memories, 
-      userMessage, 
+    // Get relevant memories with DSA optimization
+    const relevantMemories = await this.performanceOptimizer.optimizeMemoryRetrieval(
+      sessionData.memories,
+      userMessage,
+      this.memory,
       5
     );
     
-    // Build contextual prompt with enhanced structure
-    let contextualPrompt = this.buildBasePrompt(sessionData.userProfile);
+    // ⚡ Build contextual prompt with DSA optimization
+    let contextualPrompt = await this.performanceOptimizer.optimizePromptBuilding(
+      sessionData.userProfile,
+      this.buildBasePrompt.bind(this)
+    );
     
     // Add conversation history context
     if (sessionData.history.length > 0) {
@@ -360,6 +433,16 @@ export class AdvancedSessionManager {
       }
     }
     
+    // ⚡ Cache contextual prompt for future O(1) retrieval
+    const processingTime = Date.now() - startTime;
+    await this.performanceOptimizer.cacheContextualPrompt(
+      sessionId,
+      userMessage,
+      contextualPrompt,
+      processingTime
+    );
+    
+    console.log(`⚡ Contextual prompt generated with DSA optimization in ${processingTime}ms`);
     return contextualPrompt;
   }
 
@@ -409,6 +492,11 @@ export class AdvancedSessionManager {
   async clearSessionHistory(sessionId) {
     try {
       await this.kv.delete(`session:${sessionId}`);
+      
+      // ⚡ Clear DSA cache entries for this session
+      await this.performanceOptimizer.clearSessionCache(sessionId);
+      
+      console.log('⚡ Session cleared from both KV store and DSA cache');
       return true;
     } catch (error) {
       console.error('Error clearing session history:', error);
@@ -430,5 +518,26 @@ export class AdvancedSessionManager {
     );
 
     return `Previous topics discussed: ${topics.join(', ')}...`;
+  }
+  
+  /**
+   * Get performance optimizer statistics
+   * @returns {Object} Performance statistics
+   */
+  getPerformanceStats() {
+    return this.performanceOptimizer.getMetrics();
+  }
+  
+  /**
+   * Get DSA-optimized session metrics
+   * @param {string} sessionId - Session identifier
+   * @returns {Object} Session performance metrics
+   */
+  async getSessionPerformanceMetrics(sessionId) {
+    const sessionData = await this.getSessionData(sessionId);
+    return {
+      sessionMetrics: sessionData.performanceMetrics || {},
+      optimizerMetrics: this.performanceOptimizer.getSessionMetrics(sessionId)
+    };
   }
 }

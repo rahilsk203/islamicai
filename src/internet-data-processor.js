@@ -1,15 +1,22 @@
 /**
  * Internet Data Processor for IslamicAI
  * Processes and integrates real-time internet data with AI responses
+ * Now includes Al Jazeera news integration
  */
 
 import { WebSearch } from './web-search.js';
 import { LocationPrayerService } from './location-prayer-service.js';
+import { NewsIntegrationService } from './news-integration-service.js';
+import { TimesPrayerScraper } from './times-prayer-scraper.js';
+import { PerformanceOptimizer } from './performance-optimizer.js';
 
 export class InternetDataProcessor {
   constructor() {
     this.webSearch = new WebSearch();
     this.locationPrayerService = new LocationPrayerService();
+    this.newsIntegrationService = new NewsIntegrationService();
+    this.timesPrayerScraper = new TimesPrayerScraper();
+    this.performanceOptimizer = new PerformanceOptimizer();
     this.processingRules = {
       // Rules for when to use internet data
       useInternetFor: [
@@ -22,7 +29,14 @@ export class InternetDataProcessor {
         'weather_for_prayer',
         'currency_rates',
         'stock_prices',
-        'breaking_news'
+        'breaking_news',
+        'al_jazeera_news',
+        'palestinian_news',
+        'middle_east_news',
+        'muslim_world_news',
+        'timesprayer_org',
+        'kolkata_prayer_times',
+        'indian_prayer_times'
       ],
       
       // Rules for data validation
@@ -34,7 +48,8 @@ export class InternetDataProcessor {
       integrateWithResponse: true,
       addSourceAttribution: true,
       addTimestamp: true,
-      addDisclaimer: true
+      addDisclaimer: true,
+      includeAlJazeeraNews: true // Enable Al Jazeera news integration
     };
   }
 
@@ -46,71 +61,265 @@ export class InternetDataProcessor {
    * @returns {Promise<Object>} Processing decision and data
    */
   async processQuery(userMessage, context = {}, userIP = null) {
+    const startTime = Date.now();
+    
     try {
       console.log('Processing query for internet data needs:', userMessage);
       
-      // Check if query needs internet search
-      const searchDecision = this.webSearch.needsInternetSearch(userMessage);
-      
-      // Check if query is about prayer times and we have user IP
-      const isPrayerTimeQuery = this.isPrayerTimeQuery(userMessage);
-      if (isPrayerTimeQuery && userIP) {
-        console.log('Detected prayer time query with user IP, getting location-based prayer times');
-        return await this.processLocationBasedPrayerTimes(userMessage, userIP, context);
+      // ⚡ Priority 1: TimesPrayer integration for Indian cities (DSA-optimized)
+      console.log('⚡ Checking TimesPrayer integration with DSA optimization...');
+      if (await this.performanceOptimizer.isTimesPrayerQueryOptimized(userMessage)) {
+        console.log('🕰️ DSA-detected TimesPrayer query - processing with optimization...');
+        const result = await this.processTimesPrayerIntegration(userMessage, context);
+        
+        // ⚡ Cache optimized TimesPrayer data for future O(1) retrieval
+        if (result.needsInternetData) {
+          await this.performanceOptimizer.cacheInternetData(
+            userMessage,
+            result.data,
+            result.enhancedPrompt,
+            'timesprayer'
+          );
+        }
+        
+        result.processingTime = Date.now() - startTime;
+        console.log(`⚡ TimesPrayer processed with DSA optimization in ${result.processingTime}ms`);
+        return result;
       }
       
+      // ⚡ Priority 2: Location-based prayer times with DSA optimization
+      const isPrayerTimeQuery = this.isPrayerTimeQuery(userMessage);
+      if (isPrayerTimeQuery && userIP) {
+        console.log('⚡ Detected prayer time query with user IP - processing with DSA optimization...');
+        const result = await this.processLocationBasedPrayerTimes(userMessage, userIP, context);
+        
+        // ⚡ Cache optimized location-based prayer data
+        if (result.needsInternetData) {
+          await this.performanceOptimizer.cacheInternetData(
+            userMessage,
+            result.data,
+            result.enhancedPrompt,
+            'location_prayer'
+          );
+        }
+        
+        result.processingTime = Date.now() - startTime;
+        console.log(`⚡ Location prayer times processed with DSA optimization in ${result.processingTime}ms`);
+        return result;
+      }
+      
+      // ⚡ Priority 3: Al Jazeera News integration (DSA-optimized)
+      if (this.processingRules.includeAlJazeeraNews) {
+        console.log('⚡ Checking Al Jazeera news integration with DSA optimization...');
+        const newsDecision = await this.performanceOptimizer.analyzeNewsRequirement(userMessage);
+        
+        if (newsDecision.needsNews) {
+          console.log('📰 DSA-detected news query - processing with optimization...');
+          const result = await this.processAlJazeeraNewsIntegration(userMessage, context, userIP);
+          
+          // ⚡ Cache optimized news data for future O(1) retrieval
+          if (result.needsInternetData) {
+            await this.performanceOptimizer.cacheInternetData(
+              userMessage,
+              result.data,
+              result.enhancedPrompt,
+              'aljazeera'
+            );
+          }
+          
+          result.processingTime = Date.now() - startTime;
+          console.log(`⚡ Al Jazeera news processed with DSA optimization in ${result.processingTime}ms`);
+          return result;
+        }
+      }
+      
+      // ⚡ Priority 4: General web search with DSA optimization
+      const searchDecision = await this.performanceOptimizer.analyzeSearchRequirement(userMessage);
+      
       if (!searchDecision.needsSearch) {
+        // ⚡ Cache no-internet-data result for O(1) future lookups
+        await this.performanceOptimizer.cacheNoInternetDataResult(userMessage);
+        
+        const processingTime = Date.now() - startTime;
+        console.log(`⚡ No internet data needed - processed with DSA optimization in ${processingTime}ms`);
+        
         return {
           needsInternetData: false,
           reason: searchDecision.reason,
           data: null,
-          enhancedPrompt: ''
+          enhancedPrompt: '',
+          processingTime
         };
       }
 
-      console.log(`Query needs internet search: ${searchDecision.reason}`);
+      console.log(`⚡ Query needs internet search with DSA optimization: ${searchDecision.reason}`);
       
-      // Perform search
+      // Perform search with optimization hints
       const searchResults = await this.webSearch.search(userMessage, {
         maxResults: 5,
         includeIslamicSources: this.processingRules.requireIslamicSources,
-        searchEngines: ['duckduckgo'] // Start with free engine
+        searchEngines: ['duckduckgo'],
+        optimizationHints: context.searchHints
       });
 
       if (!searchResults.success || !searchResults.results.length) {
-        console.log('No internet data found, falling back to training data');
+        console.log('⚡ No internet data found with DSA optimization, caching negative result');
+        
+        // ⚡ Cache negative result to avoid repeated searches
+        await this.performanceOptimizer.cacheNoInternetDataResult(userMessage);
+        
+        const processingTime = Date.now() - startTime;
         return {
           needsInternetData: false,
           reason: 'no_data_found',
           data: null,
-          enhancedPrompt: ''
+          enhancedPrompt: '',
+          processingTime
         };
       }
 
       // Check if we have intelligent search results
       if (searchResults.intelligent) {
-        console.log('Using intelligent search results');
+        console.log('⚡ Using intelligent search results with DSA optimization');
       }
 
-      // Process and validate the data
-      const processedData = await this.processSearchResults(searchResults, userMessage);
+      // Process and validate the data with DSA optimization
+      const processedData = await this.performanceOptimizer.optimizeSearchResultsProcessing(
+        searchResults,
+        userMessage,
+        this.processSearchResults.bind(this)
+      );
       
-      // Create enhanced prompt with internet data
-      const enhancedPrompt = this.createEnhancedPrompt(processedData, userMessage, context, searchResults);
+      // Create enhanced prompt with internet data and DSA optimization
+      const enhancedPrompt = await this.performanceOptimizer.optimizePromptCreation(
+        processedData,
+        userMessage,
+        context,
+        searchResults,
+        this.createEnhancedPrompt.bind(this)
+      );
+      
+      // ⚡ Cache optimized search results for future O(1) retrieval
+      await this.performanceOptimizer.cacheInternetData(
+        userMessage,
+        processedData,
+        enhancedPrompt,
+        'search'
+      );
+      
+      const processingTime = Date.now() - startTime;
+      console.log(`⚡ Internet search processed with DSA optimization in ${processingTime}ms`);
       
       return {
         needsInternetData: true,
         reason: searchDecision.reason,
         data: processedData,
         enhancedPrompt: enhancedPrompt,
-        searchResults: searchResults
+        searchResults: searchResults,
+        processingTime
       };
 
     } catch (error) {
       console.error('Internet data processing error:', error);
+      
+      // ⚡ Use DSA-optimized error handling
+      const optimizedError = await this.performanceOptimizer.handleInternetDataError(
+        error,
+        { userMessage, processingTime: Date.now() - startTime }
+      );
+      
       return {
         needsInternetData: false,
         reason: 'processing_error',
+        error: optimizedError.message,
+        data: null,
+        enhancedPrompt: '',
+        processingTime: Date.now() - startTime
+      };
+    }
+  }
+
+  /**
+   * Process Al Jazeera news integration
+   * @param {string} userMessage - User's message
+   * @param {Object} context - Additional context
+   * @param {string} userIP - User's IP address
+   * @returns {Promise<Object>} Processing result with Al Jazeera news data
+   */
+  async processAlJazeeraNewsIntegration(userMessage, context = {}, userIP = null) {
+    try {
+      console.log('Processing Al Jazeera news integration for:', userMessage);
+      
+      // Get relevant news from Al Jazeera
+      const newsData = await this.newsIntegrationService.getRelevantNews(userMessage, {
+        maxArticles: 10,
+        regions: ['main', 'middleEast', 'africa', 'asia'],
+        forceRefresh: false
+      });
+      
+      if (!newsData.hasNews) {
+        console.log('No relevant Al Jazeera news found, falling back to regular search');
+        // Fall back to regular web search
+        const searchDecision = this.webSearch.needsInternetSearch(userMessage);
+        if (searchDecision.needsSearch) {
+          const searchResults = await this.webSearch.search(userMessage, {
+            maxResults: 3,
+            includeIslamicSources: true,
+            searchEngines: ['duckduckgo']
+          });
+          
+          if (searchResults.success && searchResults.results.length > 0) {
+            const processedData = await this.processSearchResults(searchResults, userMessage);
+            const enhancedPrompt = this.createEnhancedPrompt(processedData, userMessage, context, searchResults);
+            
+            return {
+              needsInternetData: true,
+              reason: 'fallback_web_search',
+              data: processedData,
+              enhancedPrompt: enhancedPrompt,
+              newsIntegration: false
+            };
+          }
+        }
+        
+        return {
+          needsInternetData: false,
+          reason: newsData.reason,
+          data: null,
+          enhancedPrompt: newsData.enhancedPrompt || ''
+        };
+      }
+      
+      // Process Al Jazeera news data
+      const processedNewsData = {
+        originalQuery: userMessage,
+        timestamp: new Date().toISOString(),
+        sources: ['Al Jazeera News'],
+        results: newsData.newsData.results,
+        keyFacts: this.extractNewsKeyFacts(newsData.newsData.results),
+        islamicRelevance: this.assessNewsIslamicRelevance(newsData.newsData.results),
+        dataQuality: 'excellent', // Al Jazeera is a reliable source
+        newsCategories: newsData.categories,
+        articlesFound: newsData.articlesFound
+      };
+      
+      // Create enhanced prompt with Al Jazeera news
+      const enhancedPrompt = this.createAlJazeeraNewsPrompt(processedNewsData, userMessage, newsData);
+      
+      return {
+        needsInternetData: true,
+        reason: 'aljazeera_news_integration',
+        data: processedNewsData,
+        enhancedPrompt: enhancedPrompt,
+        newsIntegration: true,
+        newsData: newsData
+      };
+      
+    } catch (error) {
+      console.error('Al Jazeera news integration error:', error);
+      return {
+        needsInternetData: false,
+        reason: 'news_integration_error',
         error: error.message,
         data: null,
         enhancedPrompt: ''
@@ -704,11 +913,368 @@ Source: IslamicAI Location Service`;
   }
 
   /**
-   * Clear all caches
+   * Clear all caches including DSA-optimized caches
    */
   clearCaches() {
     this.webSearch.clearCache();
     this.locationPrayerService.clearCaches();
-    console.log('All caches cleared');
+    if (this.newsIntegrationService) {
+      this.newsIntegrationService.clearNewsCache();
+    }
+    if (this.timesPrayerScraper) {
+      this.timesPrayerScraper.clearCache();
+    }
+    
+    // ⚡ Clear DSA-optimized caches
+    this.performanceOptimizer.clearCaches();
+    
+    console.log('⚡ All caches cleared including DSA optimization caches');
+  }
+  
+  /**
+   * Get performance optimizer statistics
+   * @returns {Object} Performance statistics
+   */
+  getPerformanceStats() {
+    return {
+      optimizerStats: this.performanceOptimizer.getMetrics(),
+      webSearchStats: this.webSearch.getCacheStats(),
+      processingRules: this.processingRules,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Check if query is for TimesPrayer.org (Indian cities) with DSA optimization
+   * @param {string} userMessage - User's message
+   * @returns {boolean} Is TimesPrayer query
+   */
+  isTimesPrayerQuery(userMessage) {
+    // ⚡ Use DSA-optimized query analysis
+    return this.performanceOptimizer.isTimesPrayerQueryFast(userMessage);
+  }
+
+  /**
+   * Process TimesPrayer.org integration
+   * @param {string} userMessage - User's message
+   * @param {Object} context - Additional context
+   * @returns {Promise<Object>} Processing result with TimesPrayer data
+   */
+  async processTimesPrayerIntegration(userMessage, context = {}) {
+    try {
+      console.log('Processing TimesPrayer.org integration for:', userMessage);
+      
+      // Determine which city based on query
+      const cityKey = this.detectIndianCity(userMessage);
+      
+      // Get prayer times from TimesPrayer.org
+      const prayerData = await this.timesPrayerScraper.getPrayerTimes(cityKey, {
+        forceRefresh: false
+      });
+      
+      // Process TimesPrayer data for Islamic AI
+      const processedData = {
+        originalQuery: userMessage,
+        timestamp: new Date().toISOString(),
+        sources: ['TimesPrayer.org'],
+        results: [{
+          title: `Prayer Times for ${prayerData.city}`,
+          content: this.timesPrayerScraper.formatForAI(prayerData),
+          url: this.timesPrayerScraper.cities[cityKey]?.url || 'https://timesprayer.org',
+          source: 'TimesPrayer.org',
+          type: 'prayer_times',
+          relevance: 'high',
+          city: prayerData.city,
+          prayerTimes: prayerData.times,
+          nextPrayer: prayerData.nextPrayer,
+          qiblaDirection: prayerData.qiblaDirection
+        }],
+        keyFacts: this.extractTimesPrayerFacts(prayerData),
+        islamicRelevance: 'high',
+        dataQuality: 'excellent'
+      };
+      
+      // Create enhanced prompt with TimesPrayer data
+      const enhancedPrompt = this.createTimesPrayerPrompt(processedData, userMessage, prayerData);
+      
+      return {
+        needsInternetData: true,
+        reason: 'timesprayer_integration',
+        data: processedData,
+        enhancedPrompt: enhancedPrompt,
+        prayerIntegration: true,
+        prayerData: prayerData
+      };
+      
+    } catch (error) {
+      console.error('TimesPrayer integration error:', error);
+      return {
+        needsInternetData: false,
+        reason: 'timesprayer_error',
+        error: error.message,
+        data: null,
+        enhancedPrompt: ''
+      };
+    }
+  }
+
+  /**
+   * Detect Indian city from user query
+   * @param {string} userMessage - User's message
+   * @returns {string} City key
+   */
+  detectIndianCity(userMessage) {
+    const lowerQuery = userMessage.toLowerCase();
+    
+    if (lowerQuery.includes('kolkata') || lowerQuery.includes('calcutta')) {
+      return 'kolkata';
+    }
+    if (lowerQuery.includes('delhi')) {
+      return 'delhi';
+    }
+    if (lowerQuery.includes('mumbai')) {
+      return 'mumbai';
+    }
+    
+    // Default to Kolkata
+    return 'kolkata';
+  }
+
+  /**
+   * Extract key facts from TimesPrayer data
+   * @param {Object} prayerData - Prayer data from TimesPrayer
+   * @returns {Array} Key facts
+   */
+  extractTimesPrayerFacts(prayerData) {
+    const facts = [];
+    const { times, city, nextPrayer, qiblaDirection, date } = prayerData;
+    
+    // Add prayer time facts
+    Object.entries(times).forEach(([name, time]) => {
+      facts.push({
+        type: 'prayer_time',
+        value: `${name.charAt(0).toUpperCase() + name.slice(1)}: ${time}`,
+        context: `Prayer time for ${city}`,
+        source: 'TimesPrayer.org'
+      });
+    });
+    
+    // Add next prayer fact
+    if (nextPrayer) {
+      facts.push({
+        type: 'next_prayer',
+        value: `${nextPrayer.name} at ${nextPrayer.time}`,
+        context: nextPrayer.minutesLeft ? `In ${nextPrayer.minutesLeft} minutes` : 'Next prayer',
+        source: 'TimesPrayer.org'
+      });
+    }
+    
+    // Add Qibla direction fact
+    facts.push({
+      type: 'qibla_direction',
+      value: qiblaDirection,
+      context: `Qibla direction for ${city}`,
+      source: 'TimesPrayer.org'
+    });
+    
+    // Add Hijri date fact
+    facts.push({
+      type: 'hijri_date',
+      value: date.hijri,
+      context: 'Current Islamic date',
+      source: 'TimesPrayer.org'
+    });
+    
+    return facts;
+  }
+
+  /**
+   * Create enhanced prompt with TimesPrayer data
+   * @param {Object} processedData - Processed prayer data
+   * @param {string} userMessage - Original user message
+   * @param {Object} prayerData - Raw prayer data
+   * @returns {string} Enhanced prompt
+   */
+  createTimesPrayerPrompt(processedData, userMessage, prayerData) {
+    let enhancedPrompt = `\n## TimesPrayer.org Integration\n\n`;
+    enhancedPrompt += `**User Query:** ${userMessage}\n`;
+    enhancedPrompt += `**Source:** TimesPrayer.org\n`;
+    enhancedPrompt += `**City:** ${prayerData.city}, ${prayerData.country}\n`;
+    enhancedPrompt += `**Timezone:** ${prayerData.timezone}\n`;
+    enhancedPrompt += `**Date:** ${prayerData.date.gregorian}\n`;
+    enhancedPrompt += `**Hijri Date:** ${prayerData.date.hijri}\n`;
+    enhancedPrompt += `**Retrieved:** ${processedData.timestamp}\n\n`;
+    
+    enhancedPrompt += `### Today's Prayer Times for ${prayerData.city}:\n\n`;
+    const { times } = prayerData;
+    enhancedPrompt += `- **Fajr:** ${times.fajr}\n`;
+    enhancedPrompt += `- **Sunrise:** ${times.sunrise}\n`;
+    enhancedPrompt += `- **Dhuhr:** ${times.dhuhr}\n`;
+    enhancedPrompt += `- **Asr:** ${times.asr}\n`;
+    enhancedPrompt += `- **Maghrib:** ${times.maghrib}\n`;
+    enhancedPrompt += `- **Isha:** ${times.isha}\n`;
+    enhancedPrompt += `- **Sehri:** ${times.sehri}\n\n`;
+    
+    enhancedPrompt += `### Additional Information:\n`;
+    if (prayerData.nextPrayer) {
+      enhancedPrompt += `- **Next Prayer:** ${prayerData.nextPrayer.name} at ${prayerData.nextPrayer.time}\n`;
+      if (prayerData.nextPrayer.minutesLeft) {
+        enhancedPrompt += `- **Time Remaining:** ${prayerData.nextPrayer.minutesLeft} minutes\n`;
+      }
+    }
+    enhancedPrompt += `- **Qibla Direction:** ${prayerData.qiblaDirection}\n`;
+    enhancedPrompt += `- **Source URL:** ${this.timesPrayerScraper.cities[this.detectIndianCity(userMessage)]?.url}\n\n`;
+    
+    enhancedPrompt += `### Integration Instructions for Islamic AI:\n`;
+    enhancedPrompt += `1. **Use Current Prayer Times:** Provide these specific prayer times for ${prayerData.city}\n`;
+    enhancedPrompt += `2. **Islamic Context:** Include relevant Islamic guidance about prayer times\n`;
+    enhancedPrompt += `3. **Local Information:** Mention this is specifically for ${prayerData.city}, India\n`;
+    enhancedPrompt += `4. **Next Prayer Alert:** Highlight the next prayer time and its importance\n`;
+    enhancedPrompt += `5. **Qibla Direction:** Include Qibla direction information for prayer\n`;
+    enhancedPrompt += `6. **Sehri Time:** Mention Sehri time for Ramadan context\n`;
+    enhancedPrompt += `7. **Source Attribution:** Credit TimesPrayer.org as the source\n`;
+    enhancedPrompt += `8. **Islamic Closing:** End with appropriate Islamic blessing\n\n`;
+    
+    enhancedPrompt += `### Special Notes:\n`;
+    enhancedPrompt += `- These times are specifically calculated for ${prayerData.city}, India\n`;
+    enhancedPrompt += `- TimesPrayer.org provides accurate prayer times for Indian cities\n`;
+    enhancedPrompt += `- Encourage users to also check with local mosques for community prayer times\n`;
+    enhancedPrompt += `- Remind about the importance of praying on time\n\n`;
+    
+    return enhancedPrompt;
+  }
+
+  /**
+   * Extract key facts from Al Jazeera news articles
+   * @param {Array} articles - News articles
+   * @returns {Array} Key facts
+   */
+  extractNewsKeyFacts(articles) {
+    const facts = [];
+    
+    articles.forEach(article => {
+      // Add headline as key fact
+      facts.push({
+        type: 'news_headline',
+        value: article.title,
+        context: `From Al Jazeera ${article.region}`,
+        source: 'Al Jazeera',
+        url: article.url,
+        publishedAt: article.publishedAt
+      });
+      
+      // Add category information
+      if (article.category) {
+        facts.push({
+          type: 'news_category',
+          value: article.category,
+          context: `News category: ${article.category}`,
+          source: 'Al Jazeera'
+        });
+      }
+      
+      // Add relevance score if available
+      if (article.relevanceScore) {
+        facts.push({
+          type: 'relevance_score',
+          value: article.relevanceScore.toString(),
+          context: 'Article relevance to user query',
+          source: 'IslamicAI Analysis'
+        });
+      }
+    });
+    
+    return facts.slice(0, 15); // Limit to top 15 facts
+  }
+
+  /**
+   * Assess Islamic relevance of news articles
+   * @param {Array} articles - News articles
+   * @returns {string} Islamic relevance level
+   */
+  assessNewsIslamicRelevance(articles) {
+    if (!articles || articles.length === 0) return 'none';
+    
+    let islamicCount = 0;
+    const islamicKeywords = ['islam', 'muslim', 'islamic', 'quran', 'mosque', 'palestine', 'ramadan', 'eid', 'hajj', 'umrah'];
+    
+    articles.forEach(article => {
+      const text = `${article.title} ${article.summary || ''}`.toLowerCase();
+      const hasIslamicContent = islamicKeywords.some(keyword => text.includes(keyword));
+      if (hasIslamicContent) islamicCount++;
+    });
+    
+    const islamicRatio = islamicCount / articles.length;
+    
+    if (islamicRatio >= 0.7) return 'high';
+    if (islamicRatio >= 0.4) return 'medium';
+    if (islamicRatio >= 0.1) return 'low';
+    return 'minimal';
+  }
+
+  /**
+   * Create enhanced prompt with Al Jazeera news data
+   * @param {Object} processedData - Processed news data
+   * @param {string} userMessage - Original user message
+   * @param {Object} newsData - Raw news integration data
+   * @returns {string} Enhanced prompt
+   */
+  createAlJazeeraNewsPrompt(processedData, userMessage, newsData) {
+    let enhancedPrompt = `\n## Al Jazeera News Integration\n\n`;
+    enhancedPrompt += `**User Query:** ${userMessage}\n`;
+    enhancedPrompt += `**News Source:** Al Jazeera (Multiple Regions)\n`;
+    enhancedPrompt += `**Articles Found:** ${processedData.articlesFound}\n`;
+    enhancedPrompt += `**Islamic Relevance:** ${processedData.islamicRelevance}\n`;
+    enhancedPrompt += `**Data Quality:** ${processedData.dataQuality}\n`;
+    enhancedPrompt += `**Retrieved:** ${processedData.timestamp}\n\n`;
+    
+    enhancedPrompt += `### Current Al Jazeera News Articles:\n\n`;
+    
+    processedData.results.slice(0, 5).forEach((article, index) => {
+      enhancedPrompt += `**${index + 1}. ${article.title}**\n`;
+      enhancedPrompt += `- **Region:** ${article.region}\n`;
+      enhancedPrompt += `- **Category:** ${article.category}\n`;
+      enhancedPrompt += `- **Published:** ${new Date(article.publishedAt).toLocaleDateString()}\n`;
+      if (article.author && article.author !== 'Al Jazeera') {
+        enhancedPrompt += `- **Author:** ${article.author}\n`;
+      }
+      if (article.summary) {
+        enhancedPrompt += `- **Summary:** ${article.summary}\n`;
+      }
+      if (article.relevanceScore) {
+        enhancedPrompt += `- **Relevance:** ${article.relevanceScore}/10\n`;
+      }
+      enhancedPrompt += `- **Source:** ${article.url}\n\n`;
+    });
+    
+    // Add regional distribution if available
+    if (processedData.newsCategories) {
+      enhancedPrompt += `### News Distribution by Category:\n`;
+      Object.entries(processedData.newsCategories).forEach(([category, articles]) => {
+        if (articles.length > 0) {
+          enhancedPrompt += `- **${category.charAt(0).toUpperCase() + category.slice(1)}:** ${articles.length} articles\n`;
+        }
+      });
+      enhancedPrompt += `\n`;
+    }
+    
+    enhancedPrompt += `### Integration Instructions for Islamic AI:\n`;
+    enhancedPrompt += `1. **Use Current News Context:** Integrate these Al Jazeera news articles into your response\n`;
+    enhancedPrompt += `2. **Islamic Perspective:** Provide Islamic context and guidance related to the news\n`;
+    enhancedPrompt += `3. **Source Attribution:** Mention Al Jazeera as the news source when referencing articles\n`;
+    enhancedPrompt += `4. **Balanced Response:** Balance current events with timeless Islamic wisdom\n`;
+    enhancedPrompt += `5. **Authentic Guidance:** Ensure all Islamic guidance is authentic and scholarly\n`;
+    enhancedPrompt += `6. **Current Relevance:** Emphasize how Islamic teachings apply to current events\n`;
+    enhancedPrompt += `7. **Community Context:** Consider the impact on Muslim communities worldwide\n`;
+    enhancedPrompt += `8. **Appropriate Closing:** End with "Allah knows best" or similar Islamic closing\n\n`;
+    
+    enhancedPrompt += `### Special Notes:\n`;
+    enhancedPrompt += `- This information is current as of ${new Date().toLocaleDateString()}\n`;
+    enhancedPrompt += `- Al Jazeera is a reputable international news source\n`;
+    enhancedPrompt += `- Encourage users to verify important news from multiple sources\n`;
+    enhancedPrompt += `- Provide Islamic context for news events when relevant\n`;
+    enhancedPrompt += `- Be sensitive to the emotional impact of news on Muslim communities\n\n`;
+    
+    return enhancedPrompt;
   }
 }
