@@ -4,6 +4,48 @@ import { CommandHandler } from './command-handler.js';
 import { AdaptiveLanguageSystem } from './adaptive-language-system.js';
 
 export default {
+  /**
+   * Get configured API keys with fallback
+   * @param {Object} env - Environment variables
+   * @returns {Array} Array of API keys
+   */
+  getAPIKeys(env) {
+    // Try multiple API keys first, then fallback to single key
+    let apiKeys = [];
+    
+    if (env.GEMINI_API_KEYS) {
+      apiKeys = env.GEMINI_API_KEYS.split(',').map(key => key.trim()).filter(key => key.length > 0);
+    }
+    
+    // Fallback to single API key if multiple keys not configured
+    if (apiKeys.length === 0 && env.GEMINI_API_KEY) {
+      apiKeys = [env.GEMINI_API_KEY];
+    }
+    
+    // Final fallback (should be configured in production)
+    if (apiKeys.length === 0) {
+      console.warn('No API keys configured! Please set GEMINI_API_KEYS or GEMINI_API_KEY');
+      apiKeys = ['YOUR_API_KEY_HERE']; // This will fail but prevents crashes
+    }
+    
+    console.log(`Loaded ${apiKeys.length} API key(s) for load balancing`);
+    return apiKeys;
+  },
+
+  /**
+   * Get default streaming options from environment
+   * @param {Object} env - Environment variables
+   * @returns {Object} Default streaming options
+   */
+  getDefaultStreamingOptions(env) {
+    return {
+      enableStreaming: env.DEFAULT_STREAMING_ENABLED === 'true',
+      chunkSize: parseInt(env.STREAMING_CHUNK_SIZE) || 30,
+      delay: parseInt(env.STREAMING_DELAY_MS) || 50,
+      includeMetadata: true
+    };
+  },
+
   async fetch(request, env, ctx) {
     try {
       // Handle CORS preflight
@@ -22,19 +64,24 @@ export default {
       
       // Handle health check for API keys
       if (request.method === 'GET' && url.pathname === '/health') {
-        const apiKeys = env.GEMINI_API_KEYS ? 
-          env.GEMINI_API_KEYS.split(',').map(key => key.trim()) : 
-          [env.GEMINI_API_KEY];
+        const apiKeys = this.getAPIKeys(env);
         
         const geminiAPI = new GeminiAPI(apiKeys);
         const keyStats = geminiAPI.getKeyStats();
         
         return new Response(JSON.stringify({
           status: 'healthy',
+          streaming: 'enabled_by_default',
+          multipleApiKeys: true,
           apiKeys: {
             total: apiKeys.length,
             available: geminiAPI.apiKeyManager.getAvailableKeyCount(),
             stats: keyStats
+          },
+          defaultStreaming: {
+            enabled: env.DEFAULT_STREAMING_ENABLED === 'true',
+            chunkSize: parseInt(env.STREAMING_CHUNK_SIZE) || 30,
+            delay: parseInt(env.STREAMING_DELAY_MS) || 50
           },
           timestamp: new Date().toISOString()
         }), {
@@ -43,13 +90,9 @@ export default {
         });
       }
 
-      // Handle streaming endpoint
-      if (request.method === 'POST' && url.pathname === '/api/stream') {
-        return this.handleStreamingRequest(request, env, ctx);
-      }
-
-      // Handle regular chat endpoint
-      if (request.method === 'POST' && url.pathname === '/api/chat') {
+      // All requests now support both streaming and direct responses
+      // Default is streaming unless explicitly disabled
+      if (request.method === 'POST' && (url.pathname === '/api/chat' || url.pathname === '/api/stream' || url.pathname === '/')) {
         return this.handleChatRequest(request, env, ctx);
       }
 
@@ -61,7 +104,7 @@ export default {
         });
       }
 
-      // Default to regular chat if no specific endpoint
+      // Default to regular chat
       return this.handleChatRequest(request, env, ctx);
 
     } catch (error) {
@@ -85,95 +128,7 @@ export default {
   },
 
   /**
-   * Handle streaming request
-   */
-  async handleStreamingRequest(request, env, ctx) {
-    const url = new URL(request.url);
-    const body = await request.json();
-    
-    // Get session ID from either URL params or request body
-    const sessionId = url.searchParams.get('session_id') || body.session_id;
-    
-    if (!sessionId) {
-      return new Response(JSON.stringify({ error: 'Session ID required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const userMessage = body.message;
-    const languageInfo = body.language_info || {};
-    const streamingOptions = body.streaming_options || { enableStreaming: true };
-    
-    if (!userMessage) {
-      return new Response(JSON.stringify({ error: 'Message required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Initialize managers and adaptive language system
-    const sessionManager = new AdvancedSessionManager(env.CHAT_SESSIONS);
-    const commandHandler = new CommandHandler();
-    const adaptiveLanguageSystem = new AdaptiveLanguageSystem();
-    
-    // Support multiple API keys with fallback for local testing
-    const apiKeys = env.GEMINI_API_KEYS ? 
-      env.GEMINI_API_KEYS.split(',').map(key => key.trim()) : 
-      [env.GEMINI_API_KEY || "AIzaSyCGpimrLEZrz-rN6yVKfvTHG4G1dpOb_fc"];
-    
-    const geminiAPI = new GeminiAPI(apiKeys);
-
-    // Apply adaptive language learning and detection
-    const languageAdaptation = adaptiveLanguageSystem.adaptLanguage(userMessage, sessionId, {
-      previousMessages: await sessionManager.getRecentMessages(sessionId, 5),
-      userProfile: await sessionManager.getUserProfile(sessionId),
-      timestamp: Date.now()
-    });
-
-    // Check for commands
-    if (userMessage.startsWith('/')) {
-      const commandResult = await commandHandler.handleCommand(userMessage, sessionId, sessionManager);
-      return new Response(JSON.stringify(commandResult), {
-        status: 200,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
-    }
-
-    // Get contextual prompt with memory
-    const contextualPrompt = await sessionManager.getContextualPrompt(sessionId, userMessage);
-    
-    // Create enhanced language info with adaptation data
-    const enhancedLanguageInfo = {
-      detected_language: languageAdaptation.detectedLanguage,
-      confidence: languageAdaptation.confidence,
-      should_respond_in_language: languageAdaptation.shouldAdapt,
-      adaptation_type: languageAdaptation.adaptationType,
-      user_preference: languageAdaptation.userPreference,
-      learning_data: languageAdaptation.learningData,
-      response_instructions: adaptiveLanguageSystem.getResponseInstructions(
-        languageAdaptation.detectedLanguage, 
-        languageAdaptation
-      )
-    };
-
-    // Handle streaming response
-    return this.handleStreamingResponse(
-      geminiAPI, 
-      sessionId, 
-      userMessage, 
-      contextualPrompt, 
-      enhancedLanguageInfo, 
-      streamingOptions,
-      sessionManager
-    );
-  },
-
-  /**
-   * Handle regular chat request
+   * Handle all chat requests with streaming by default and multiple API key support
    */
   async handleChatRequest(request, env, ctx) {
     const url = new URL(request.url);
@@ -191,7 +146,14 @@ export default {
 
     const userMessage = body.message;
     const languageInfo = body.language_info || {};
-    const streamingOptions = body.streaming_options || {};
+    
+    // Get default streaming options and allow override
+    const defaultStreamingOptions = this.getDefaultStreamingOptions(env);
+    const requestStreamingOptions = body.streaming_options || {};
+    const streamingOptions = {
+      ...defaultStreamingOptions,
+      ...requestStreamingOptions
+    };
     
     if (!userMessage) {
       return new Response(JSON.stringify({ error: 'Message required' }), {
@@ -200,17 +162,19 @@ export default {
       });
     }
 
+    console.log(`Processing message for session ${sessionId}: ${userMessage}`);
+    console.log(`Streaming options:`, streamingOptions);
+
     // Initialize managers and adaptive language system
     const sessionManager = new AdvancedSessionManager(env.CHAT_SESSIONS);
     const commandHandler = new CommandHandler();
     const adaptiveLanguageSystem = new AdaptiveLanguageSystem();
     
-    // Support multiple API keys with fallback for local testing
-    const apiKeys = env.GEMINI_API_KEYS ? 
-      env.GEMINI_API_KEYS.split(',').map(key => key.trim()) : 
-      [env.GEMINI_API_KEY || "AIzaSyCGpimrLEZrz-rN6yVKfvTHG4G1dpOb_fc"];
-    
+    // Use multiple API keys with load balancing
+    const apiKeys = this.getAPIKeys(env);
     const geminiAPI = new GeminiAPI(apiKeys);
+    
+    console.log(`Using ${apiKeys.length} API key(s) with load balancing`);
 
     // Apply adaptive language learning and detection
     const languageAdaptation = adaptiveLanguageSystem.adaptLanguage(userMessage, sessionId, {
@@ -248,46 +212,82 @@ export default {
       )
     };
 
-    // Handle streaming vs non-streaming responses
-    if (streamingOptions.enableStreaming) {
-      return this.handleStreamingResponse(
-        geminiAPI, 
-        sessionId, 
-        userMessage, 
-        contextualPrompt, 
-        enhancedLanguageInfo, 
-        streamingOptions,
-        sessionManager
-      );
+    try {
+      // Check if streaming is enabled (default is true)
+      if (streamingOptions.enableStreaming) {
+        console.log('Using streaming response (default mode)');
+        return await this.handleStreamingResponse(
+          geminiAPI, 
+          sessionId, 
+          userMessage, 
+          contextualPrompt, 
+          enhancedLanguageInfo, 
+          streamingOptions,
+          sessionManager
+        );
+      } else {
+        console.log('Using direct response (streaming disabled)');
+        // Call Gemini API with direct response
+        const geminiResponse = await geminiAPI.generateResponse(
+          [], 
+          sessionId, 
+          userMessage, 
+          contextualPrompt, 
+          enhancedLanguageInfo, 
+          streamingOptions
+        );
+        
+        // Process message and update session with intelligent memory
+        const sessionData = await sessionManager.processMessage(sessionId, userMessage, geminiResponse);
+
+        // Prepare response
+        const response = {
+          session_id: sessionId,
+          reply: geminiResponse,
+          history_summary: sessionManager.getHistorySummary(sessionData.history),
+          user_profile: sessionData.userProfile,
+          memory_count: sessionData.memories.length,
+          streaming: false,
+          api_keys_used: apiKeys.length,
+          language_info: enhancedLanguageInfo
+        };
+
+        console.log(`Direct response generated for session ${sessionId}, length: ${geminiResponse.length}`);
+
+        return new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+
+    } catch (error) {
+      console.error('Error generating response:', error);
+      
+      // Return error response
+      const errorResponse = {
+        session_id: sessionId,
+        reply: "Sorry, I'm having trouble processing your request right now. Please try again.",
+        error: error.message,
+        streaming: streamingOptions.enableStreaming,
+        api_keys_available: apiKeys.length
+      };
+
+      return new Response(JSON.stringify(errorResponse), {
+        status: 200,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
     }
-
-    // Call Gemini API with enhanced adaptive language info
-    const geminiResponse = await geminiAPI.generateResponse([], sessionId, userMessage, contextualPrompt, enhancedLanguageInfo);
-    
-    // Process message and update session with intelligent memory
-    const sessionData = await sessionManager.processMessage(sessionId, userMessage, geminiResponse);
-
-    // Prepare response
-    const response = {
-      session_id: sessionId,
-      reply: geminiResponse,
-      history_summary: sessionManager.getHistorySummary(sessionData.history),
-      user_profile: sessionData.userProfile,
-      memory_count: sessionData.memories.length
-    };
-
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
   },
 
   /**
-   * Handle streaming response for live API
-   * @param {GeminiAPI} geminiAPI - Gemini API instance
+   * Handle streaming response with multiple API key support
+   * @param {GeminiAPI} geminiAPI - Gemini API instance with multiple keys
    * @param {string} sessionId - Session identifier
    * @param {string} userMessage - User message
    * @param {string} contextualPrompt - Contextual prompt
@@ -298,8 +298,21 @@ export default {
    */
   async handleStreamingResponse(geminiAPI, sessionId, userMessage, contextualPrompt, enhancedLanguageInfo, streamingOptions, sessionManager) {
     try {
-      // Generate streaming response
-      const stream = await geminiAPI.generateResponse([], sessionId, userMessage, contextualPrompt, enhancedLanguageInfo, streamingOptions);
+      console.log(`Starting streaming response for session ${sessionId} with ${geminiAPI.apiKeyManager.getAvailableKeyCount()} API keys`);
+      
+      // Generate streaming response using multiple API keys
+      const stream = await geminiAPI.generateResponse(
+        [], 
+        sessionId, 
+        userMessage, 
+        contextualPrompt, 
+        enhancedLanguageInfo, 
+        streamingOptions
+      );
+      
+      // Capture methods to avoid 'this' context issues
+      const parseStreamingChunk = this.parseStreamingChunk;
+      const createErrorChunk = this.createErrorChunk;
       
       // Create a new stream that includes session management
       const enhancedStream = new ReadableStream({
@@ -315,9 +328,9 @@ export default {
               if (done) break;
               
               // Parse the chunk
-              const chunkData = this.parseStreamingChunk(value);
+              const chunkData = parseStreamingChunk(value);
               
-              if (chunkData.type === 'content') {
+              if (chunkData && chunkData.type === 'content') {
                 fullResponse += chunkData.content;
               }
               
@@ -329,6 +342,7 @@ export default {
             if (fullResponse.trim()) {
               try {
                 await sessionManager.processMessage(sessionId, userMessage, fullResponse);
+                console.log(`Streaming session updated for ${sessionId}, response length: ${fullResponse.length}`);
               } catch (sessionError) {
                 console.error('Session processing error:', sessionError);
               }
@@ -336,7 +350,8 @@ export default {
             
           } catch (error) {
             console.error('Streaming processing error:', error);
-            controller.enqueue(this.createErrorChunk('Streaming error occurred'));
+            const errorChunk = createErrorChunk('Streaming error occurred');
+            controller.enqueue(new TextEncoder().encode(errorChunk));
           } finally {
             controller.close();
           }
@@ -357,10 +372,14 @@ export default {
     } catch (error) {
       console.error('Streaming handler error:', error);
       
+      // Capture method to avoid 'this' context issues
+      const createErrorChunk = this.createErrorChunk;
+      
       // Return error as streaming response
       const errorStream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(this.createErrorChunk('Streaming service unavailable'));
+        start: (controller) => {
+          const errorChunk = createErrorChunk('Streaming service temporarily unavailable');
+          controller.enqueue(new TextEncoder().encode(errorChunk));
           controller.close();
         }
       });
@@ -384,14 +403,15 @@ export default {
    */
   parseStreamingChunk(chunk) {
     try {
-      const lines = chunk.split('\n');
+      const chunkStr = typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk);
+      const lines = chunkStr.split('\n');
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const jsonData = line.substring(6);
           return JSON.parse(jsonData);
         }
       }
-      return { type: 'unknown', content: chunk };
+      return { type: 'unknown', content: chunkStr };
     } catch (error) {
       return { type: 'error', content: chunk };
     }

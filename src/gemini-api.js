@@ -9,7 +9,7 @@ export class GeminiAPI {
     this.islamicPrompt = new IslamicPrompt();
   }
 
-  async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = {}) {
+  async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = { enableStreaming: true }) {
     try {
       // Validate input for security
       const validation = this.islamicPrompt.validateInput(userInput);
@@ -152,12 +152,13 @@ Respond naturally in the detected language and maintain consistency with user's 
         ]
       };
 
-      // Handle streaming vs non-streaming responses
-      if (streamingOptions.enableStreaming) {
+      // Use streaming by default unless explicitly disabled
+      if (streamingOptions.enableStreaming !== false) {
+        console.log('Using streaming response (default mode)');
         return this.generateStreamingResponse(requestBody, streamingOptions);
-      }
-
-      console.log('Sending request to Gemini API:', JSON.stringify(requestBody, null, 2));
+      } else {
+        console.log('Using direct response (streaming explicitly disabled)');
+        console.log('Sending request to Gemini API:', JSON.stringify(requestBody, null, 2));
 
       // Use multi-API key system with retry logic
       const response = await this.makeAPIRequestWithRetry(requestBody);
@@ -167,16 +168,29 @@ Respond naturally in the detected language and maintain consistency with user's 
         let responseText = data.candidates[0].content.parts[0].text;
         
         // Post-process response for better formatting
-      responseText = this.postProcessResponse(responseText, queryType, languageInfo);
+        responseText = this.postProcessResponse(responseText, queryType, languageInfo);
         
+        console.log(`Direct response generated successfully, length: ${responseText.length}`);
         return responseText;
       } else {
         console.error('Unexpected response format:', data);
         throw new Error('Invalid response format from Gemini API');
       }
+      }
 
     } catch (error) {
       console.error('Gemini API error:', error);
+      
+      // Enhanced error handling for direct responses
+      if (error.message.includes('API key not valid')) {
+        const errorMsg = 'Invalid API key. Please check your Gemini API key configuration.';
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      } else if (error.message.includes('quota')) {
+        const errorMsg = 'API quota exceeded. Please try again later.';
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
       
       // Fallback response for IslamicAI - doesn't reveal internal model information
       const detectedLanguage = languageInfo.detected_language || 'english';
@@ -425,6 +439,7 @@ ${languageInstruction}
     const baseUrl = this.baseUrl;
     const postProcessResponse = this.postProcessResponse.bind(this);
     const streamTextInChunks = this.streamTextInChunks.bind(this);
+    const createStreamingChunk = this.createStreamingChunk.bind(this);
 
     // Create a readable stream for streaming response
     const stream = new ReadableStream({
@@ -484,11 +499,13 @@ ${languageInstruction}
 
         } catch (error) {
           console.error('Streaming error:', error);
-          controller.enqueue(this.createStreamingChunk({
+          const errorChunk = createStreamingChunk({
             type: 'error',
             content: 'Sorry, AI service is temporarily unavailable. Please try again.',
             timestamp: new Date().toISOString()
-          }));
+          });
+          // Convert string to bytes
+          controller.enqueue(new TextEncoder().encode(errorChunk));
         } finally {
           controller.close();
         }
@@ -509,7 +526,7 @@ ${languageInstruction}
     
     // Send initial metadata
     if (includeMetadata) {
-      controller.enqueue(this.createStreamingChunk({
+      const startChunk = this.createStreamingChunk({
         type: 'start',
         content: '',
         metadata: {
@@ -517,14 +534,15 @@ ${languageInstruction}
           estimatedChunks: Math.ceil(text.length / chunkSize),
           timestamp: new Date().toISOString()
         }
-      }));
+      });
+      controller.enqueue(new TextEncoder().encode(startChunk));
     }
 
     // Stream text in chunks
     for (let i = 0; i < text.length; i += chunkSize) {
       const chunk = text.slice(i, i + chunkSize);
       
-      controller.enqueue(this.createStreamingChunk({
+      const streamChunk = this.createStreamingChunk({
         type: 'content',
         content: chunk,
         metadata: {
@@ -532,7 +550,8 @@ ${languageInstruction}
           progress: Math.round((i / text.length) * 100),
           timestamp: new Date().toISOString()
         }
-      }));
+      });
+      controller.enqueue(new TextEncoder().encode(streamChunk));
 
       // Add delay between chunks for realistic streaming effect
       if (delay > 0 && i + chunkSize < text.length) {
@@ -542,14 +561,15 @@ ${languageInstruction}
 
     // Send completion metadata
     if (includeMetadata) {
-      controller.enqueue(this.createStreamingChunk({
+      const endChunk = this.createStreamingChunk({
         type: 'end',
         content: '',
         metadata: {
           completed: true,
           timestamp: new Date().toISOString()
         }
-      }));
+      });
+      controller.enqueue(new TextEncoder().encode(endChunk));
     }
   }
 

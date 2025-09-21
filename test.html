@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IslamicAI Chat Test</title>
+    <title>IslamicAI Chat Test - Real Streaming</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -104,6 +104,29 @@
             color: #666;
         }
         
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .status-streaming {
+            background: #28a745;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .status-direct {
+            background: #ffc107;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
         .commands {
             background: #e3f2fd;
             padding: 15px;
@@ -145,10 +168,11 @@
 </head>
 <body>
     <div class="container">
-        <h1>🕌 IslamicAI Chat Assistant</h1>
+        <h1>🕌 IslamicAI Chat Assistant (Real-time Streaming)</h1>
         
         <div class="session-info">
-            <strong>Session ID:</strong> <span id="sessionId">Loading...</span>
+            <strong>Session ID:</strong> <span id="sessionId">Loading...</span><br>
+            <strong>Response Mode:</strong> <span class="status-indicator status-streaming"></span><span id="responseMode">Real-time Streaming</span>
         </div>
         
         <div class="commands">
@@ -163,7 +187,7 @@
         
         <div class="chat-container" id="chatContainer">
             <div class="ai-message">
-                Assalamu Alaikum! I'm IslamicAI, your advanced Islamic Scholar AI assistant. I can help you with Qur'an, Hadith, Tafseer, Fiqh, and Seerah questions. I respond in multiple languages - try asking me something or use the commands above! May Allah guide our conversation. 🤲
+                Assalamu Alaikum! I'm IslamicAI, your advanced Islamic Scholar AI assistant with real-time streaming responses. I can help you with Qur'an, Hadith, Tafseer, Fiqh, and Seerah questions. I respond in multiple languages with live streaming for faster interaction - try asking me something or use the commands above! May Allah guide our conversation. 🤲
             </div>
         </div>
         
@@ -218,6 +242,19 @@
             document.getElementById('sendButton').disabled = show;
         }
         
+        function updateResponseMode(isStreaming) {
+            const indicator = document.querySelector('.status-indicator');
+            const modeText = document.getElementById('responseMode');
+            
+            if (isStreaming) {
+                indicator.className = 'status-indicator status-streaming';
+                modeText.textContent = 'Real-time Streaming';
+            } else {
+                indicator.className = 'status-indicator status-direct';
+                modeText.textContent = 'Direct Response';
+            }
+        }
+        
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
@@ -233,39 +270,100 @@
             const aiMessageDiv = addMessage('', false, true);
             
             try {
-                const response = await fetch(`${WORKER_URL}?session_id=${sessionId}`, {
+                // Use the new API endpoint with streaming support
+                const response = await fetch(`${WORKER_URL}/api/chat`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ 
+                        message: message,
+                        session_id: sessionId,
+                        language_info: {
+                            detected_language: 'english',
+                            confidence: 0.9,
+                            should_respond_in_language: true
+                        }
+                        // Streaming is enabled by default - no need to specify streaming_options
+                    })
                 });
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 
-                const data = await response.json();
-                
-                if (data.reply) {
-                    // Simulate streaming effect
-                    const reply = data.reply;
-                    let currentText = '';
+                // Check if it's a streaming response
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('text/event-stream')) {
+                    console.log('✅ Streaming response detected!');
+                    updateResponseMode(true);
                     
-                    for (let i = 0; i < reply.length; i++) {
-                        currentText += reply[i];
-                        updateStreamingMessage(aiMessageDiv, currentText);
-                        await new Promise(resolve => setTimeout(resolve, 20)); // 20ms delay for typing effect
+                    // Handle real streaming response
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let fullResponse = '';
+                    
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        
+                        if (done) {
+                            console.log('✅ Streaming completed!');
+                            break;
+                        }
+                        
+                        const chunk = decoder.decode(value);
+                        
+                        // Parse Server-Sent Events format
+                        const lines = chunk.split('\n');
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const chunkData = JSON.parse(line.substring(6));
+                                    
+                                    if (chunkData.type === 'content') {
+                                        fullResponse += chunkData.content;
+                                        updateStreamingMessage(aiMessageDiv, fullResponse);
+                                    } else if (chunkData.type === 'error') {
+                                        console.error('Stream error:', chunkData.content);
+                                        updateStreamingMessage(aiMessageDiv, 'Error: ' + chunkData.content);
+                                    } else if (chunkData.type === 'end') {
+                                        console.log('Stream ended:', chunkData);
+                                    }
+                                } catch (e) {
+                                    // Ignore JSON parsing errors
+                                    console.warn('Failed to parse chunk:', line);
+                                }
+                            }
+                        }
                     }
                     
                     finishStreaming(aiMessageDiv);
                 } else {
-                    updateStreamingMessage(aiMessageDiv, 'Sorry, I encountered an error. Please try again.');
-                    finishStreaming(aiMessageDiv);
-                }
-                
-                if (data.history_summary) {
-                    console.log('History summary:', data.history_summary);
+                    // Fallback to direct response
+                    console.log('📄 Direct response detected');
+                    updateResponseMode(false);
+                    const data = await response.json();
+                    
+                    if (data.reply) {
+                        // Simulate typing effect for direct responses
+                        const reply = data.reply;
+                        let currentText = '';
+                        
+                        for (let i = 0; i < reply.length; i++) {
+                            currentText += reply[i];
+                            updateStreamingMessage(aiMessageDiv, currentText);
+                            await new Promise(resolve => setTimeout(resolve, 20));
+                        }
+                        
+                        finishStreaming(aiMessageDiv);
+                    } else {
+                        updateStreamingMessage(aiMessageDiv, 'Sorry, I encountered an error. Please try again.');
+                        finishStreaming(aiMessageDiv);
+                    }
+                    
+                    if (data.history_summary) {
+                        console.log('History summary:', data.history_summary);
+                    }
                 }
                 
             } catch (error) {

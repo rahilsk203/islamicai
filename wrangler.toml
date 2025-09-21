@@ -16,8 +16,16 @@ preview_id = "2fbc40a619a14fef9a07cbfbffa92827"
 
 # Environment variables
 [vars]
-# Add your Gemini API key here
-GEMINI_API_KEY = "AIzaSyCGpimrLEZrz-rN6yVKfvTHG4G1dpOb_fc"
+# Multiple Gemini API keys separated by commas for load balancing and failover
+# Add multiple valid API keys from https://makersuite.google.com/app/apikey
+GEMINI_API_KEYS = "AIzaSyCGpimrLEZrz-rN6yVKfvTHG4G1dpOb_fc,AIzaSyDoq44UVQ-0bW1MCwAFgJveplWVt1ZWf1Y"
+
+# Fallback single API key (if GEMINI_API_KEYS is not available)
+
+# Default streaming configuration
+DEFAULT_STREAMING_ENABLED = "true"
+STREAMING_CHUNK_SIZE = "30"
+STREAMING_DELAY_MS = "50"
 
 # Optional: Custom domain
 # [env.production]
