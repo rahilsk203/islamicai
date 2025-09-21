@@ -18,7 +18,9 @@ export class AdaptiveLanguageSystem {
           /[a-zA-Z]+\s+(?:ke|ki|ka)\s+(?:liye|mein|se|ko|par)/gi,
           /(?:kasa|kon|kaya|kya|kyun|kahan|kab|kaise)\s+(?:hai|hain|ho|hun)/gi,
           /(?:assalamu alaikum|salam|insha allah|mashallah|subhanallah|alhamdulillah)/gi,
-          /(?:bhai|sister|brother|aap|tum|main|mera|mujhe)\s+[a-zA-Z]+/gi
+          /(?:bhai|sister|brother|aap|tum|main|mera|mujhe)\s+[a-zA-Z]+/gi,
+          /(?:current|time|waqt|samay|abhi|now)\s+(?:time|waqt|samay|kya|hai)/gi,
+          /(?:kya|kyun|kahan|kab|kaise|kitna|kitni|kitne)\s+(?:time|waqt|samay)/gi
         ],
         keywords: [
           'main', 'aap', 'tum', 'ham', 'ye', 'wo', 'kar', 'raha', 'hun', 'hain', 'hai',
@@ -26,7 +28,8 @@ export class AdaptiveLanguageSystem {
           'kyunki', 'jab', 'tab', 'agar', 'to', 'phir', 'abhi', 'usne', 'hamne', 'aapne',
           'tuu', 'kasa', 'kon', 'kaya', 'saktaa', 'sakte', 'sakti', 'sakta', 'hoon', 'ho',
           'hoi', 'hoa', 'hoiye', 'hoja', 'hojao', 'hojaye', 'kya', 'kyun', 'kahan', 'kab',
-          'kaise', 'kitna', 'kitni', 'kitne', 'bhai', 'sister', 'brother'
+          'kaise', 'kitna', 'kitni', 'kitne', 'bhai', 'sister', 'brother', 'time', 'waqt',
+          'samay', 'current', 'now', 'abhi', 'time', 'waqt', 'samay'
         ],
         weight: 3.0,
         script: 'mixed'

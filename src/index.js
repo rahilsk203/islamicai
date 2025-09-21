@@ -73,6 +73,7 @@ export default {
           status: 'healthy',
           streaming: 'enabled_by_default',
           multipleApiKeys: true,
+          internetAccess: 'enabled',
           apiKeys: {
             total: apiKeys.length,
             available: geminiAPI.apiKeyManager.getAvailableKeyCount(),
@@ -88,6 +89,45 @@ export default {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
+      }
+
+      // Handle internet connectivity test
+      if (request.method === 'GET' && url.pathname === '/test-internet') {
+        try {
+          const apiKeys = this.getAPIKeys(env);
+          const geminiAPI = new GeminiAPI(apiKeys);
+          
+          // Test internet search capability
+          const testQuery = 'current islamic calendar 2024';
+          const internetData = await geminiAPI.internetProcessor.processQuery(testQuery);
+          
+          return new Response(JSON.stringify({
+            status: 'internet_test_completed',
+            internetAccess: internetData.needsInternetData ? 'working' : 'limited',
+            testQuery: testQuery,
+            searchResults: internetData.data ? {
+              sources: internetData.data.sources,
+              resultsCount: internetData.data.results.length,
+              islamicRelevance: internetData.data.islamicRelevance,
+              dataQuality: internetData.data.dataQuality
+            } : null,
+            processingStats: geminiAPI.internetProcessor.getProcessingStats(),
+            timestamp: new Date().toISOString()
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        } catch (error) {
+          return new Response(JSON.stringify({
+            status: 'internet_test_failed',
+            error: error.message,
+            internetAccess: 'failed',
+            timestamp: new Date().toISOString()
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
       }
 
       // All requests now support both streaming and direct responses
@@ -128,11 +168,35 @@ export default {
   },
 
   /**
+   * Extract user IP address from request
+   * @param {Request} request - The incoming request
+   * @returns {string} User's IP address
+   */
+  extractUserIP(request) {
+    // Try multiple headers for IP detection (Cloudflare Workers)
+    const cfConnectingIP = request.headers.get('CF-Connecting-IP');
+    const xForwardedFor = request.headers.get('X-Forwarded-For');
+    const xRealIP = request.headers.get('X-Real-IP');
+    const remoteAddr = request.headers.get('X-Forwarded-For') || request.headers.get('X-Real-IP');
+    
+    // Priority order: CF-Connecting-IP > X-Forwarded-For > X-Real-IP
+    const userIP = cfConnectingIP || xForwardedFor || xRealIP || 'unknown';
+    
+    console.log(`User IP detected: ${userIP}`);
+    console.log(`IP Headers: CF-Connecting-IP=${cfConnectingIP}, X-Forwarded-For=${xForwardedFor}, X-Real-IP=${xRealIP}`);
+    
+    return userIP;
+  },
+
+  /**
    * Handle all chat requests with streaming by default and multiple API key support
    */
   async handleChatRequest(request, env, ctx) {
     const url = new URL(request.url);
     const body = await request.json();
+    
+    // Extract user IP for location detection
+    const userIP = this.extractUserIP(request);
     
     // Get session ID from either URL params or request body
     const sessionId = url.searchParams.get('session_id') || body.session_id;
@@ -223,7 +287,8 @@ export default {
           contextualPrompt, 
           enhancedLanguageInfo, 
           streamingOptions,
-          sessionManager
+          sessionManager,
+          userIP
         );
       } else {
         console.log('Using direct response (streaming disabled)');
@@ -234,11 +299,31 @@ export default {
           userMessage, 
           contextualPrompt, 
           enhancedLanguageInfo, 
-          streamingOptions
+          streamingOptions,
+          userIP
         );
         
         // Process message and update session with intelligent memory
         const sessionData = await sessionManager.processMessage(sessionId, userMessage, geminiResponse);
+
+        // Get location information for response
+        let locationInfo = null;
+        if (userIP && userIP !== 'unknown') {
+          try {
+            const { LocationPrayerService } = await import('./src/location-prayer-service.js');
+            const locationService = new LocationPrayerService();
+            const location = await locationService.getUserLocation(userIP);
+            locationInfo = {
+              ip: userIP,
+              city: location.city,
+              country: location.country,
+              timezone: location.timezone,
+              source: location.source
+            };
+          } catch (error) {
+            console.log('Location detection failed:', error.message);
+          }
+        }
 
         // Prepare response
         const response = {
@@ -249,7 +334,9 @@ export default {
           memory_count: sessionData.memories.length,
           streaming: false,
           api_keys_used: apiKeys.length,
-          language_info: enhancedLanguageInfo
+          language_info: enhancedLanguageInfo,
+          internet_enhanced: true, // Indicate that responses may include internet data
+          location_info: locationInfo // Include location information
         };
 
         console.log(`Direct response generated for session ${sessionId}, length: ${geminiResponse.length}`);
@@ -294,9 +381,10 @@ export default {
    * @param {Object} enhancedLanguageInfo - Enhanced language info
    * @param {Object} streamingOptions - Streaming options
    * @param {AdvancedSessionManager} sessionManager - Session manager
+   * @param {string} userIP - User's IP address for location detection
    * @returns {Response} Streaming response
    */
-  async handleStreamingResponse(geminiAPI, sessionId, userMessage, contextualPrompt, enhancedLanguageInfo, streamingOptions, sessionManager) {
+  async handleStreamingResponse(geminiAPI, sessionId, userMessage, contextualPrompt, enhancedLanguageInfo, streamingOptions, sessionManager, userIP) {
     try {
       console.log(`Starting streaming response for session ${sessionId} with ${geminiAPI.apiKeyManager.getAvailableKeyCount()} API keys`);
       
@@ -307,7 +395,8 @@ export default {
         userMessage, 
         contextualPrompt, 
         enhancedLanguageInfo, 
-        streamingOptions
+        streamingOptions,
+        userIP
       );
       
       // Capture methods to avoid 'this' context issues

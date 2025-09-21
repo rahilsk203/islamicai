@@ -1,5 +1,6 @@
 import { IslamicPrompt } from './islamic-prompt.js';
 import { APIKeyManager } from './api-key-manager.js';
+import { InternetDataProcessor } from './internet-data-processor.js';
 
 export class GeminiAPI {
   constructor(apiKeys) {
@@ -7,9 +8,10 @@ export class GeminiAPI {
     this.apiKeyManager = new APIKeyManager(apiKeys);
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
     this.islamicPrompt = new IslamicPrompt();
+    this.internetProcessor = new InternetDataProcessor();
   }
 
-  async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = { enableStreaming: true }) {
+  async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = { enableStreaming: true }, userIP = null) {
     try {
       // Validate input for security
       const validation = this.islamicPrompt.validateInput(userInput);
@@ -18,6 +20,14 @@ export class GeminiAPI {
           this.createStreamingError(validation.response) : 
           validation.response;
       }
+
+      // Process internet data if needed
+      console.log('Processing query for internet data needs...');
+      const internetData = await this.internetProcessor.processQuery(userInput, {
+        sessionId,
+        languageInfo,
+        contextualPrompt
+      }, userIP);
 
       // Classify query type
       const queryType = this.islamicPrompt.classifyQuery(userInput);
@@ -44,9 +54,15 @@ ${structuredResponsePrompt}${debateFramework ? `
 ${debateFramework}` : ''}`;
       
       // Combine with contextual prompt if provided
-      const finalPrompt = contextualPrompt ? 
+      let finalPrompt = contextualPrompt ? 
         `${contextualPrompt}\n\n${enhancedSystemPrompt}` : 
         enhancedSystemPrompt;
+      
+      // Add internet data if available
+      if (internetData.needsInternetData && internetData.enhancedPrompt) {
+        console.log('Integrating internet data into prompt');
+        finalPrompt = `${finalPrompt}\n\n${internetData.enhancedPrompt}`;
+      }
       
       // Use adaptive language detection with enhanced instructions
       let detectedLanguage = languageInfo.detected_language || 'english';
