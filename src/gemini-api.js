@@ -9,12 +9,14 @@ export class GeminiAPI {
     this.islamicPrompt = new IslamicPrompt();
   }
 
-  async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}) {
+  async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = {}) {
     try {
       // Validate input for security
       const validation = this.islamicPrompt.validateInput(userInput);
       if (!validation.isValid) {
-        return validation.response;
+        return streamingOptions.enableStreaming ? 
+          this.createStreamingError(validation.response) : 
+          validation.response;
       }
 
       // Classify query type
@@ -46,78 +48,51 @@ ${debateFramework}` : ''}`;
         `${contextualPrompt}\n\n${enhancedSystemPrompt}` : 
         enhancedSystemPrompt;
       
-      // Create a structured message with clear sections
+      // Use adaptive language detection with enhanced instructions
       let detectedLanguage = languageInfo.detected_language || 'english';
       const shouldRespondInLanguage = languageInfo.should_respond_in_language || false;
+      const adaptationType = languageInfo.adaptation_type || 'default';
+      const responseInstructions = languageInfo.response_instructions || {};
       
-      // Enhanced language detection with advanced patterns
-      if (!languageInfo.detected_language || languageInfo.confidence < 50) {
-        console.log('Using advanced language detection in Gemini API');
-        
-        // Advanced pattern matching for better detection
-        const text = userInput.toLowerCase();
-        
-        // Hinglish detection (highest priority for mixed languages)
-        const hinglishScore = this.calculateHinglishScore(text);
-        if (hinglishScore > 0.3) {
-          detectedLanguage = 'hinglish';
-        }
-        // Hindi detection
-        else if (/[\u0900-\u097F]/.test(userInput) || this.hasHindiKeywords(text)) {
-          detectedLanguage = 'hindi';
-        }
-        // Urdu detection (Arabic script with Urdu-specific characters)
-        else if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(userInput)) {
-          if (this.hasUrduKeywords(text)) {
-            detectedLanguage = 'urdu';
-          } else if (this.hasPersianKeywords(text)) {
-            detectedLanguage = 'persian';
-          } else {
-            detectedLanguage = 'arabic';
-          }
-        }
-        // Bengali detection
-        else if (/[\u0980-\u09FF]/.test(userInput)) {
-          detectedLanguage = 'bengali';
-        }
-        // Turkish detection
-        else if (/[çğıöşüÇĞIİÖŞÜ]/.test(userInput)) {
-          detectedLanguage = 'turkish';
-        }
-        // English (default)
-        else {
-          detectedLanguage = 'english';
-        }
-        
-        console.log('Advanced language detection result:', detectedLanguage);
+      // Use adaptive response instructions if available, otherwise fallback to default
+      let languageInstruction;
+      if (responseInstructions.instruction) {
+        languageInstruction = responseInstructions.instruction;
+      } else {
+        // Fallback language instructions
+        const languageInstructions = {
+          english: "RESPOND IN ENGLISH ONLY. Use proper English grammar and Islamic terminology in English.",
+          hindi: "RESPOND IN HINDI ONLY (हिंदी में). Use proper Hindi grammar and Islamic terminology in Hindi. Use Devanagari script.",
+          hinglish: "RESPOND IN HINGLISH ONLY (Hindi + English mix). Use natural Hinglish that mixes Hindi and English words as commonly spoken. Use Roman script for Hindi words.",
+          urdu: "RESPOND IN URDU ONLY (اردو میں). Use proper Urdu grammar and Islamic terminology in Urdu. Use Arabic script.",
+          arabic: "RESPOND IN ARABIC ONLY (باللغة العربية). Use proper Arabic grammar and Islamic terminology in Arabic. Use Arabic script.",
+          persian: "RESPOND IN PERSIAN ONLY (به فارسی). Use proper Persian grammar and Islamic terminology in Persian. Use Arabic script.",
+          bengali: "RESPOND IN BENGALI ONLY (বাংলায়). Use proper Bengali grammar and Islamic terminology in Bengali. Use Bengali script."
+        };
+        languageInstruction = languageInstructions[detectedLanguage] || languageInstructions.english;
       }
       
-      // Language-specific response instructions
-      const languageInstructions = {
-        english: "RESPOND IN ENGLISH ONLY. Use proper English grammar and Islamic terminology in English.",
-        hindi: "RESPOND IN HINDI ONLY (हिंदी में). Use proper Hindi grammar and Islamic terminology in Hindi. Use Devanagari script.",
-        hinglish: "RESPOND IN HINGLISH ONLY (Hindi + English mix). Use natural Hinglish that mixes Hindi and English words as commonly spoken. Use Roman script for Hindi words.",
-        urdu: "RESPOND IN URDU ONLY (اردو میں). Use proper Urdu grammar and Islamic terminology in Urdu. Use Arabic script.",
-        arabic: "RESPOND IN ARABIC ONLY (باللغة العربية). Use proper Arabic grammar and Islamic terminology in Arabic. Use Arabic script.",
-        persian: "RESPOND IN PERSIAN ONLY (به فارسی). Use proper Persian grammar and Islamic terminology in Persian. Use Arabic script."
-      };
-      
-      const languageInstruction = languageInstructions[detectedLanguage] || languageInstructions.english;
-      
-      // Debug: Log language detection info
-      console.log('Language detection in Gemini API:', {
+      // Debug: Log adaptive language detection info
+      console.log('Adaptive language detection in Gemini API:', {
         detectedLanguage,
         shouldRespondInLanguage,
+        adaptationType,
         confidence: languageInfo.confidence,
-        languageInstruction
+        userPreference: languageInfo.user_preference,
+        languageInstruction,
+        responseInstructions
       });
       
-      const combinedPrompt = `# IslamicAI Response System
+      const combinedPrompt = `# IslamicAI Adaptive Response System
 
-## CRITICAL LANGUAGE INSTRUCTION
+## CRITICAL ADAPTIVE LANGUAGE INSTRUCTION
 ${languageInstruction}
+
+## ADAPTATION DETAILS
 DETECTED LANGUAGE: ${detectedLanguage}
-CONFIDENCE: ${languageInfo.confidence || 0}%
+ADAPTATION TYPE: ${adaptationType}
+CONFIDENCE: ${Math.round((languageInfo.confidence || 0) * 100)}%
+USER PREFERENCE: ${languageInfo.user_preference || 'learning'}
 MUST RESPOND IN: ${detectedLanguage}
 
 ## System Context
@@ -126,20 +101,23 @@ ${finalPrompt}
 ## User Message
 ${userInput}
 
-## Response Requirements
+## Adaptive Response Requirements
 1. Structure your response clearly with headings when appropriate
 2. Provide evidence-based answers with references to Qur'an/Hadith
-3. Use a respectful, scholarly tone
+3. Use a respectful, scholarly tone appropriate for the detected language
 4. Address the user's specific question directly
 5. Include practical applications when relevant
 6. For debate-style questions, use the Debate-Proof Response Framework
-7. CRUCIAL: ALWAYS respond in the SAME LANGUAGE the user is using - ${detectedLanguage}
+7. CRUCIAL: ALWAYS respond in the SAME LANGUAGE/STYLE the user is using - ${detectedLanguage}
 8. NEVER reveal internal model information, architecture details, or implementation specifics
 9. Use appropriate Islamic greetings and blessings for the detected language
 10. End with language-appropriate "Allah knows best" equivalent for matters of interpretation
+11. ADAPTIVE: If user switches language mid-conversation, immediately adapt to their new preference
+12. LEARNING: Remember user's language preferences for future interactions
 
-## FINAL REMINDER
-You MUST respond in ${detectedLanguage}. Do not ask the user to switch languages. Respond naturally in the detected language.`;
+## FINAL ADAPTIVE REMINDER
+You MUST respond in ${detectedLanguage}. This is an ADAPTIVE system that learns user preferences. 
+Respond naturally in the detected language and maintain consistency with user's communication style.`;
 
       const requestBody = {
         contents: [
@@ -173,6 +151,11 @@ You MUST respond in ${detectedLanguage}. Do not ask the user to switch languages
           }
         ]
       };
+
+      // Handle streaming vs non-streaming responses
+      if (streamingOptions.enableStreaming) {
+        return this.generateStreamingResponse(requestBody, streamingOptions);
+      }
 
       console.log('Sending request to Gemini API:', JSON.stringify(requestBody, null, 2));
 
@@ -336,80 +319,6 @@ ${languageInstruction}
   }
 
   /**
-   * Calculate Hinglish score for advanced detection
-   */
-  calculateHinglishScore(text) {
-    let score = 0;
-    const totalWords = text.split(/\s+/).length;
-    
-    // Common Hinglish patterns
-    const hinglishPatterns = [
-      /main\s+[a-zA-Z]+\s+kar\s+raha\s+hun/gi,
-      /aap\s+[a-zA-Z]+\s+kar\s+sakte\s+hain/gi,
-      /ye\s+[a-zA-Z]+\s+ka\s+[a-zA-Z]+\s+hai/gi,
-      /[a-zA-Z]+\s+ke\s+liye/gi,
-      /[a-zA-Z]+\s+mein/gi,
-      /[a-zA-Z]+\s+se/gi,
-      /[a-zA-Z]+\s+ko/gi,
-      /[a-zA-Z]+\s+par/gi
-    ];
-    
-    // Check for Hinglish patterns
-    for (const pattern of hinglishPatterns) {
-      const matches = text.match(pattern) || [];
-      score += matches.length * 2;
-    }
-    
-    // Common Hinglish words
-    const hinglishWords = [
-      'main', 'aap', 'ye', 'wo', 'ham', 'tum', 'kar', 'raha', 'hun', 'hain', 'hai',
-      'ke', 'ki', 'ka', 'mein', 'se', 'ko', 'par', 'liye', 'aur', 'ya', 'lekin',
-      'kyunki', 'jab', 'tab', 'agar', 'to', 'phir', 'abhi', 'usne', 'hamne', 'aapne'
-    ];
-    
-    for (const word of hinglishWords) {
-      if (text.includes(word)) {
-        score += 1;
-      }
-    }
-    
-    return Math.min(score / totalWords, 1);
-  }
-
-  /**
-   * Check for Hindi keywords
-   */
-  hasHindiKeywords(text) {
-    const hindiKeywords = [
-      'है', 'हैं', 'का', 'के', 'की', 'में', 'से', 'को', 'पर', 'अल्लाह', 'इस्लाम',
-      'कुरान', 'हदीस', 'नमाज़', 'रोज़ा', 'ज़कात', 'हज', 'मस्जिद', 'इमाम'
-    ];
-    return hindiKeywords.some(keyword => text.includes(keyword));
-  }
-
-  /**
-   * Check for Urdu keywords
-   */
-  hasUrduKeywords(text) {
-    const urduKeywords = [
-      'ہے', 'ہیں', 'کا', 'کے', 'کی', 'میں', 'سے', 'کو', 'پر', 'اللہ', 'اسلام',
-      'قرآن', 'حدیث', 'نماز', 'روزہ', 'زکات', 'حج', 'مسجد', 'امام'
-    ];
-    return urduKeywords.some(keyword => text.includes(keyword));
-  }
-
-  /**
-   * Check for Persian keywords
-   */
-  hasPersianKeywords(text) {
-    const persianKeywords = [
-      'است', 'هستند', 'را', 'از', 'در', 'به', 'برای', 'این', 'آن', 'خدا',
-      'اسلام', 'قرآن', 'حدیث', 'نماز', 'روزه', 'زکات', 'حج', 'مسجد'
-    ];
-    return persianKeywords.some(keyword => text.includes(keyword));
-  }
-
-  /**
    * Make API request with multi-key retry logic
    * @param {Object} requestBody - The request body
    * @returns {Promise<Object>} API response data
@@ -496,5 +405,216 @@ ${languageInstruction}
    */
   resetFailedKeys() {
     this.apiKeyManager.resetFailedKeys();
+  }
+
+  /**
+   * Generate streaming response using Gemini API
+   * @param {Object} requestBody - The request body
+   * @param {Object} streamingOptions - Streaming configuration
+   * @returns {ReadableStream} Streaming response
+   */
+  async generateStreamingResponse(requestBody, streamingOptions = {}) {
+    const {
+      chunkSize = 50,
+      delay = 50,
+      includeMetadata = true
+    } = streamingOptions;
+
+    // Capture references to avoid context issues
+    const apiKeyManager = this.apiKeyManager;
+    const baseUrl = this.baseUrl;
+    const postProcessResponse = this.postProcessResponse.bind(this);
+    const streamTextInChunks = this.streamTextInChunks.bind(this);
+
+    // Create a readable stream for streaming response
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Get API key - ensure apiKeyManager is available
+          if (!apiKeyManager) {
+            console.error('APIKeyManager not initialized');
+            throw new Error('APIKeyManager not initialized');
+          }
+          
+          const apiKey = apiKeyManager.getNextKey();
+          if (!apiKey) {
+            throw new Error('No available API keys');
+          }
+
+          // Make streaming request to Gemini API
+          console.log('Making request to Gemini API with key:', apiKey.substring(0, 10) + '...');
+          console.log('Request body:', JSON.stringify(requestBody, null, 2));
+          
+          const response = await fetch(baseUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-goog-api-key': apiKey,
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          console.log('Gemini API response status:', response.status);
+          console.log('Gemini API response headers:', Object.fromEntries(response.headers.entries()));
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Gemini API error response:', errorText);
+            throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+          }
+
+          const data = await response.json();
+          console.log('Gemini API response data:', JSON.stringify(data, null, 2));
+          
+          if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+            let responseText = data.candidates[0].content.parts[0].text;
+            
+            // Post-process response
+            responseText = postProcessResponse(responseText, 'general', {});
+            
+            // Stream the response in chunks
+            await streamTextInChunks(responseText, controller, {
+              chunkSize,
+              delay,
+              includeMetadata
+            });
+          } else {
+            throw new Error('Invalid response format from Gemini API');
+          }
+
+        } catch (error) {
+          console.error('Streaming error:', error);
+          controller.enqueue(this.createStreamingChunk({
+            type: 'error',
+            content: 'Sorry, AI service is temporarily unavailable. Please try again.',
+            timestamp: new Date().toISOString()
+          }));
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return stream;
+  }
+
+  /**
+   * Stream text in chunks with configurable delay
+   * @param {string} text - Text to stream
+   * @param {ReadableStreamDefaultController} controller - Stream controller
+   * @param {Object} options - Streaming options
+   */
+  async streamTextInChunks(text, controller, options = {}) {
+    const { chunkSize = 50, delay = 50, includeMetadata = true } = options;
+    
+    // Send initial metadata
+    if (includeMetadata) {
+      controller.enqueue(this.createStreamingChunk({
+        type: 'start',
+        content: '',
+        metadata: {
+          totalLength: text.length,
+          estimatedChunks: Math.ceil(text.length / chunkSize),
+          timestamp: new Date().toISOString()
+        }
+      }));
+    }
+
+    // Stream text in chunks
+    for (let i = 0; i < text.length; i += chunkSize) {
+      const chunk = text.slice(i, i + chunkSize);
+      
+      controller.enqueue(this.createStreamingChunk({
+        type: 'content',
+        content: chunk,
+        metadata: {
+          chunkIndex: Math.floor(i / chunkSize),
+          progress: Math.round((i / text.length) * 100),
+          timestamp: new Date().toISOString()
+        }
+      }));
+
+      // Add delay between chunks for realistic streaming effect
+      if (delay > 0 && i + chunkSize < text.length) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    // Send completion metadata
+    if (includeMetadata) {
+      controller.enqueue(this.createStreamingChunk({
+        type: 'end',
+        content: '',
+        metadata: {
+          completed: true,
+          timestamp: new Date().toISOString()
+        }
+      }));
+    }
+  }
+
+  /**
+   * Create a streaming chunk with proper formatting
+   * @param {Object} data - Chunk data
+   * @returns {string} Formatted chunk
+   */
+  createStreamingChunk(data) {
+    return `data: ${JSON.stringify(data)}\n\n`;
+  }
+
+  /**
+   * Create streaming error response
+   * @param {string} errorMessage - Error message
+   * @returns {ReadableStream} Error stream
+   */
+  createStreamingError(errorMessage) {
+    return new ReadableStream({
+      start(controller) {
+        controller.enqueue(this.createStreamingChunk({
+          type: 'error',
+          content: errorMessage,
+          timestamp: new Date().toISOString()
+        }));
+        controller.close();
+      }
+    });
+  }
+
+  /**
+   * Generate streaming response with fallback
+   * @param {Object} requestBody - Request body
+   * @param {Object} streamingOptions - Streaming options
+   * @returns {ReadableStream} Streaming response
+   */
+  async generateStreamingResponseWithFallback(requestBody, streamingOptions = {}) {
+    try {
+      return await this.generateStreamingResponse(requestBody, streamingOptions);
+    } catch (error) {
+      console.error('Streaming fallback error:', error);
+      
+      // Fallback to non-streaming response
+      const fallbackResponse = await this.makeAPIRequestWithRetry(requestBody);
+      
+      if (fallbackResponse.candidates && fallbackResponse.candidates[0] && fallbackResponse.candidates[0].content) {
+        const responseText = fallbackResponse.candidates[0].content.parts[0].text;
+        
+        // Convert to streaming format
+        return new ReadableStream({
+          start(controller) {
+            controller.enqueue(this.createStreamingChunk({
+              type: 'fallback',
+              content: responseText,
+              metadata: {
+                fallback: true,
+                timestamp: new Date().toISOString()
+              }
+            }));
+            controller.close();
+          }
+        });
+      } else {
+        throw error;
+      }
+    }
   }
 }

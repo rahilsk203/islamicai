@@ -236,11 +236,6 @@ export class IntelligentMemory {
   extractUserPreferences(message) {
     const preferences = {};
     
-    // Enhanced language detection with priority
-    const languageScore = this.detectLanguage(message);
-    preferences.language = languageScore.language;
-    preferences.confidence = languageScore.confidence;
-
     // Islamic school preference
     if (message.includes('hanafi') || message.includes('hanafi school')) {
       preferences.fiqhSchool = 'hanafi';
@@ -419,106 +414,6 @@ export class IntelligentMemory {
     }
 
     return facts;
-  }
-
-  // Advanced language detection with scoring
-  detectLanguage(message) {
-    const scores = {
-      english: 0,
-      hindi: 0,
-      bengali: 0,
-      hinglish: 0
-    };
-
-    const lowerMessage = message.toLowerCase();
-    const words = lowerMessage.split(/\s+/);
-    const totalWords = words.length;
-
-    // English detection
-    const englishWords = ['the', 'and', 'is', 'are', 'was', 'were', 'have', 'has', 'had', 'will', 'would', 'can', 'could', 'should', 'may', 'might', 'this', 'that', 'these', 'those', 'what', 'when', 'where', 'why', 'how', 'who', 'which', 'with', 'from', 'for', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'among'];
-    const englishPattern = /[a-zA-Z]/g;
-    const englishChars = (message.match(englishPattern) || []).length;
-    
-    englishWords.forEach(word => {
-      if (lowerMessage.includes(word)) scores.english += 2;
-    });
-    scores.english += (englishChars / message.length) * 10;
-
-    // Hindi detection
-    const hindiPattern = /[\u0900-\u097F]/g;
-    const hindiChars = (message.match(hindiPattern) || []).length;
-    const hindiWords = ['hai', 'hain', 'ho', 'hun', 'hu', 'main', 'mera', 'mujhe', 'tum', 'aap', 'ye', 'wo', 'us', 'se', 'ke', 'ki', 'ko', 'mein', 'abhi', 'phir', 'bhi', 'to', 'ya', 'aur', 'lekin', 'magar', 'kyun', 'kya', 'kaise', 'kahan', 'kab', 'kuch', 'sab', 'koi', 'kisi', 'jab', 'tab', 'agar', 'toh', 'fir', 'bhi', 'bas', 'sirf', 'bilkul', 'zaroor', 'shayad', 'ho', 'sakta', 'sakti', 'sakte', 'hoga', 'hogi', 'hoge'];
-    
-    hindiWords.forEach(word => {
-      if (lowerMessage.includes(word)) scores.hindi += 3;
-    });
-    scores.hindi += (hindiChars / message.length) * 15;
-
-    // Bengali detection
-    const bengaliPattern = /[\u0980-\u09FF]/g;
-    const bengaliChars = (message.match(bengaliPattern) || []).length;
-    const bengaliWords = ['ami', 'tumi', 'se', 'ke', 'ki', 'kore', 'korte', 'hobe', 'ache', 'nei', 'ebong', 'kintu', 'tobe', 'jodi', 'tahole', 'karon', 'kintu', 'tobe', 'ebong', 'ar', 'o', 'she', 'tara', 'amra', 'tomra', 'ora', 'amader', 'tomader', 'oder'];
-    
-    bengaliWords.forEach(word => {
-      if (lowerMessage.includes(word)) scores.bengali += 3;
-    });
-    scores.bengali += (bengaliChars / message.length) * 15;
-
-    // Hinglish detection (mixed language)
-    const hinglishWords = ['bhai', 'sister', 'brother', 'aap', 'tum', 'main', 'mera', 'mujhe', 'hai', 'hain', 'ho', 'hun', 'hu', 'ke', 'ki', 'ko', 'se', 'mein', 'abhi', 'phir', 'bhi', 'to', 'ya', 'aur', 'lekin', 'magar', 'kyun', 'kya', 'kaise', 'kahan', 'kab', 'kar', 'karne', 'karte', 'karta', 'karti', 'hota', 'hoti', 'hote', 'hoga', 'hogi', 'hoge', 'sakta', 'sakti', 'sakte', 'chahiye', 'chahiye', 'chahiye', 'dena', 'lena', 'karna', 'hona', 'jana', 'aana', 'jaana', 'aaya', 'gaya', 'gayi', 'gaye'];
-    
-    hinglishWords.forEach(word => {
-      if (lowerMessage.includes(word)) scores.hinglish += 2;
-    });
-
-    // Hinglish gets bonus for mixed script
-    if (hindiChars > 0 && englishChars > 0) {
-      scores.hinglish += 5;
-    }
-
-    // Hinglish gets bonus for common mixed phrases
-    const mixedPhrases = ['assalamu alaikum', 'salam', 'insha allah', 'mashallah', 'subhanallah', 'alhamdulillah', 'bismillah', 'astaghfirullah', 'la ilaha illallah', 'muhammadur rasulullah'];
-    mixedPhrases.forEach(phrase => {
-      if (lowerMessage.includes(phrase)) scores.hinglish += 3;
-    });
-
-    // Find the language with highest score
-    let maxScore = 0;
-    let detectedLanguage = 'english';
-    let confidence = 0;
-
-    Object.entries(scores).forEach(([lang, score]) => {
-      if (score > maxScore) {
-        maxScore = score;
-        detectedLanguage = lang;
-        confidence = Math.min(score / totalWords, 1);
-      }
-    });
-
-    // Special case: If Hinglish score is close to Hindi, prefer Hinglish
-    if (scores.hinglish > 0 && scores.hindi > 0 && Math.abs(scores.hinglish - scores.hindi) < 2) {
-      detectedLanguage = 'hinglish';
-      confidence = Math.min((scores.hinglish + scores.hindi) / totalWords, 1);
-    }
-
-    return {
-      language: detectedLanguage,
-      confidence: Math.round(confidence * 100) / 100,
-      scores: scores
-    };
-  }
-
-  // Legacy methods for backward compatibility
-  containsHindi(message) {
-    return this.detectLanguage(message).language === 'hindi';
-  }
-
-  containsBengali(message) {
-    return this.detectLanguage(message).language === 'bengali';
-  }
-
-  containsHinglish(message) {
-    return this.detectLanguage(message).language === 'hinglish';
   }
 
   // Create memory object with enhanced metadata

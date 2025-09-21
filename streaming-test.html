@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IslamicAI Streaming Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            background: #f9f9f9;
+        }
+        
+        .test-section h3 {
+            color: #555;
+            margin-top: 0;
+            font-size: 1.3em;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .response-area {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 8px;
+            min-height: 200px;
+            border: 2px solid #ddd;
+        }
+        
+        .streaming-response {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .chunk-info {
+            background: #e8f4fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .error {
+            background: #ffe6e6;
+            color: #d00;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        
+        .success {
+            background: #e6ffe6;
+            color: #060;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .language-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .language-btn {
+            padding: 8px 15px;
+            border: 2px solid #ddd;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .language-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 IslamicAI Streaming Test</h1>
+        
+        <div class="test-section">
+            <h3>📡 Live Streaming Test</h3>
+            
+            <div class="input-group">
+                <label for="message">Your Message:</label>
+                <textarea id="message" placeholder="Ask IslamicAI anything...">How do I perform Salah?</textarea>
+            </div>
+            
+            <div class="language-selector">
+                <button class="language-btn active" data-lang="english">English</button>
+                <button class="language-btn" data-lang="hinglish">Hinglish</button>
+                <button class="language-btn" data-lang="hindi">Hindi</button>
+                <button class="language-btn" data-lang="bengali">Bengali</button>
+                <button class="language-btn" data-lang="urdu">Urdu</button>
+            </div>
+            
+            <div class="input-group">
+                <label for="chunkSize">Chunk Size:</label>
+                <select id="chunkSize">
+                    <option value="10">Fast (10 chars)</option>
+                    <option value="30" selected>Normal (30 chars)</option>
+                    <option value="50">Slow (50 chars)</option>
+                </select>
+            </div>
+            
+            <div class="input-group">
+                <label for="delay">Delay (ms):</label>
+                <select id="delay">
+                    <option value="0">No Delay</option>
+                    <option value="25">Fast (25ms)</option>
+                    <option value="50" selected>Normal (50ms)</option>
+                    <option value="100">Slow (100ms)</option>
+                </select>
+            </div>
+            
+            <button id="startStream" onclick="startStreaming()">🚀 Start Streaming</button>
+            <button id="stopStream" onclick="stopStreaming()" disabled>⏹️ Stop Stream</button>
+            
+            <div class="response-area" id="responseArea">
+                <div style="text-align: center; color: #999; padding: 50px;">
+                    Click "Start Streaming" to begin...
+                </div>
+            </div>
+            
+            <div class="stats" id="stats" style="display: none;">
+                <div class="stat-card">
+                    <div class="stat-value" id="chunkCount">0</div>
+                    <div class="stat-label">Chunks</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalChars">0</div>
+                    <div class="stat-label">Characters</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="duration">0ms</div>
+                    <div class="stat-label">Duration</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="avgChunkTime">0ms</div>
+                    <div class="stat-label">Avg Chunk Time</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🧪 Quick Tests</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                <button onclick="runQuickTest('How do I perform Salah?', 'english')">English Test</button>
+                <button onclick="runQuickTest('hello kasa hai bhai', 'hinglish')">Hinglish Test</button>
+                <button onclick="runQuickTest('नमाज़ कैसे पढ़ते हैं?', 'hindi')">Hindi Test</button>
+                <button onclick="runQuickTest('নামাজ কিভাবে পড়ব?', 'bengali')">Bengali Test</button>
+                <button onclick="runQuickTest('نماز کیسے پڑھیں؟', 'urdu')">Urdu Test</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStream = null;
+        let startTime = null;
+        let chunkCount = 0;
+        let totalChars = 0;
+        let selectedLanguage = 'english';
+        
+        // Language selector
+        document.querySelectorAll('.language-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.language-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                selectedLanguage = btn.dataset.lang;
+            });
+        });
+        
+        async function startStreaming() {
+            const message = document.getElementById('message').value.trim();
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+            
+            const chunkSize = parseInt(document.getElementById('chunkSize').value);
+            const delay = parseInt(document.getElementById('delay').value);
+            
+            // Reset stats
+            chunkCount = 0;
+            totalChars = 0;
+            startTime = Date.now();
+            
+            // Update UI
+            document.getElementById('startStream').disabled = true;
+            document.getElementById('stopStream').disabled = false;
+            document.getElementById('responseArea').innerHTML = '<div class="streaming-response"></div>';
+            document.getElementById('stats').style.display = 'grid';
+            
+            try {
+                const response = await fetch('http://127.0.0.1:8787/api/stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: 'streaming_test_' + Date.now(),
+                        language_info: {
+                            detected_language: selectedLanguage,
+                            confidence: 0.9,
+                            should_respond_in_language: true
+                        },
+                        streaming_options: {
+                            enableStreaming: true,
+                            chunkSize: chunkSize,
+                            delay: delay,
+                            includeMetadata: true
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                const responseDiv = document.querySelector('.streaming-response');
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                handleStreamingChunk(data, responseDiv);
+                            } catch (e) {
+                                console.error('Error parsing chunk:', e);
+                            }
+                        }
+                    }
+                }
+                
+                showSuccess('Streaming completed successfully!');
+                
+            } catch (error) {
+                console.error('Streaming error:', error);
+                showError('Streaming failed: ' + error.message);
+            } finally {
+                document.getElementById('startStream').disabled = false;
+                document.getElementById('stopStream').disabled = true;
+            }
+        }
+        
+        function handleStreamingChunk(data, responseDiv) {
+            chunkCount++;
+            
+            if (data.type === 'start') {
+                responseDiv.innerHTML += `<div class="chunk-info">🚀 Stream started - ${data.metadata.estimatedChunks} chunks expected</div>`;
+            } else if (data.type === 'content') {
+                totalChars += data.content.length;
+                responseDiv.innerHTML += data.content;
+                updateStats();
+            } else if (data.type === 'end') {
+                responseDiv.innerHTML += `<div class="chunk-info">✅ Stream completed</div>`;
+            } else if (data.type === 'error') {
+                responseDiv.innerHTML += `<div class="error">❌ Error: ${data.content}</div>`;
+            }
+            
+            // Auto-scroll to bottom
+            responseDiv.scrollTop = responseDiv.scrollHeight;
+        }
+        
+        function updateStats() {
+            const duration = Date.now() - startTime;
+            const avgChunkTime = chunkCount > 0 ? duration / chunkCount : 0;
+            
+            document.getElementById('chunkCount').textContent = chunkCount;
+            document.getElementById('totalChars').textContent = totalChars;
+            document.getElementById('duration').textContent = duration + 'ms';
+            document.getElementById('avgChunkTime').textContent = Math.round(avgChunkTime) + 'ms';
+        }
+        
+        function stopStreaming() {
+            if (currentStream) {
+                currentStream.cancel();
+                currentStream = null;
+            }
+            
+            document.getElementById('startStream').disabled = false;
+            document.getElementById('stopStream').disabled = true;
+            
+            showError('Streaming stopped by user');
+        }
+        
+        async function runQuickTest(message, language) {
+            document.getElementById('message').value = message;
+            
+            // Set language
+            document.querySelectorAll('.language-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.lang === language) {
+                    btn.classList.add('active');
+                }
+            });
+            selectedLanguage = language;
+            
+            // Start streaming
+            await startStreaming();
+        }
+        
+        function showError(message) {
+            const responseArea = document.getElementById('responseArea');
+            responseArea.innerHTML += `<div class="error">${message}</div>`;
+        }
+        
+        function showSuccess(message) {
+            const responseArea = document.getElementById('responseArea');
+            responseArea.innerHTML += `<div class="success">${message}</div>`;
+        }
+        
+        // Auto-resize textarea
+        document.getElementById('message').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+        });
+    </script>
+</body>
+</html>

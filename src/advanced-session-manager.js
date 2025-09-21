@@ -51,6 +51,37 @@ export class AdvancedSessionManager {
     }
   }
 
+  /**
+   * Get recent messages for adaptive language system
+   * @param {string} sessionId - Session identifier
+   * @param {number} limit - Number of recent messages to retrieve
+   * @returns {Array} Recent messages
+   */
+  async getRecentMessages(sessionId, limit = 5) {
+    try {
+      const sessionData = await this.getSessionData(sessionId);
+      return sessionData.history.slice(-limit);
+    } catch (error) {
+      console.error('Error getting recent messages:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get user profile for adaptive language system
+   * @param {string} sessionId - Session identifier
+   * @returns {Object} User profile
+   */
+  async getUserProfile(sessionId) {
+    try {
+      const sessionData = await this.getSessionData(sessionId);
+      return sessionData.userProfile || {};
+    } catch (error) {
+      console.error('Error getting user profile:', error);
+      return {};
+    }
+  }
+
   prioritizeMemories(memories) {
     return memories.sort((a, b) => {
       // Sort by priority, then by access count, then by recency
