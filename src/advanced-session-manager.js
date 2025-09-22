@@ -1,37 +1,17 @@
 import { IntelligentMemory } from './intelligent-memory.js';
-import { PerformanceOptimizer } from './performance-optimizer.js';
-import { UltraAdvancedSessionMemory } from './ultra-session-memory.js';
 
 export class AdvancedSessionManager {
   constructor(kvNamespace) {
     this.kv = kvNamespace;
-    this.maxHistoryLength = 50;
+    this.maxHistoryLength = 50; // Increased for better context
     this.maxMemoryItems = 100;
     this.memory = new IntelligentMemory();
-    this.performanceOptimizer = new PerformanceOptimizer();
-    
-    // 🧠 Ultra-Advanced Session Memory System
-    this.ultraMemory = new UltraAdvancedSessionMemory(this.performanceOptimizer);
-    this.selfLearningEnabled = true;
-    
-    console.log('🚀 Advanced Session Manager initialized with Ultra-Memory, Self-Learning & Enhanced Chat History');
   }
 
   async getSessionData(sessionId) {
     try {
-      // ⚡ Initialize ultra-advanced session memory
-      if (this.selfLearningEnabled) {
-        await this.ultraMemory.initializeSession(sessionId);
-      }
-      
-      // ⚡ Try DSA-optimized session cache first (O(1) lookup)
-      const cachedSession = await this.performanceOptimizer.getCachedSession(sessionId);
-      if (cachedSession) {
-        console.log('⚡ Retrieved session from DSA cache (ultra-fast)');
-        return cachedSession;
-      }
       const sessionData = await this.kv.get(`session:${sessionId}`);
-      const data = sessionData ? JSON.parse(sessionData) : {
+      return sessionData ? JSON.parse(sessionData) : {
         history: [],
         memories: [],
         userProfile: {},
@@ -39,11 +19,6 @@ export class AdvancedSessionManager {
         lastActivity: new Date().toISOString(),
         conversationFlow: [] // Track conversation flow
       };
-      
-      // ⚡ Cache session data for future O(1) retrieval
-      await this.performanceOptimizer.cacheSession(sessionId, data);
-      
-      return data;
     } catch (error) {
       console.error('Error getting session data:', error);
       return {
@@ -62,50 +37,30 @@ export class AdvancedSessionManager {
       // Update last activity
       sessionData.lastActivity = new Date().toISOString();
       
-      // ⚡ Apply DSA-based session optimization
-      const optimizedSessionData = await this.performanceOptimizer.optimizeSessionData(sessionData);
-      
       // Limit memory items
-      if (optimizedSessionData.memories.length > this.maxMemoryItems) {
-        optimizedSessionData.memories = this.prioritizeMemories(optimizedSessionData.memories)
+      if (sessionData.memories.length > this.maxMemoryItems) {
+        sessionData.memories = this.prioritizeMemories(sessionData.memories)
           .slice(0, this.maxMemoryItems);
       }
       
-      await this.kv.put(`session:${sessionId}`, JSON.stringify(optimizedSessionData), {
+      await this.kv.put(`session:${sessionId}`, JSON.stringify(sessionData), {
         expirationTtl: 86400 * 30 // 30 days
       });
-      
-      // ⚡ Update DSA cache with optimized data
-      await this.performanceOptimizer.cacheSession(sessionId, optimizedSessionData);
-      
-      console.log('⚡ Session saved with DSA optimization');
     } catch (error) {
       console.error('Error saving session data:', error);
     }
   }
 
   /**
-   * Get recent messages for adaptive language system with DSA optimization
+   * Get recent messages for adaptive language system
    * @param {string} sessionId - Session identifier
    * @param {number} limit - Number of recent messages to retrieve
    * @returns {Array} Recent messages
    */
   async getRecentMessages(sessionId, limit = 5) {
     try {
-      // ⚡ Try DSA-optimized recent messages cache first
-      const cachedMessages = await this.performanceOptimizer.getCachedRecentMessages(sessionId, limit);
-      if (cachedMessages) {
-        console.log('⚡ Retrieved recent messages from DSA cache');
-        return cachedMessages;
-      }
-      
       const sessionData = await this.getSessionData(sessionId);
-      const recentMessages = sessionData.history.slice(-limit);
-      
-      // ⚡ Cache recent messages for future fast retrieval
-      await this.performanceOptimizer.cacheRecentMessages(sessionId, recentMessages);
-      
-      return recentMessages;
+      return sessionData.history.slice(-limit);
     } catch (error) {
       console.error('Error getting recent messages:', error);
       return [];
@@ -137,52 +92,27 @@ export class AdvancedSessionManager {
   }
 
   async processMessage(sessionId, userMessage, aiResponse) {
-    const startTime = Date.now();
-    
-    // 🧠 Ultra-Advanced Learning Processing with enhanced chat history
-    if (this.selfLearningEnabled) {
-      const learningResult = await this.ultraMemory.processMessageWithLearning(
-        sessionId, userMessage, aiResponse
-      );
-      console.log(`🧠 Learning insights: Intelligence gain ${learningResult.intelligenceGain.toFixed(1)}%`);
-      console.log(`💾 Chat history updated: ${learningResult.chatHistoryUpdated}`);
-      console.log(`📊 Contextual improvements: ${learningResult.contextualImprovements.toFixed(1)}%`);
-    }
-    
-    // ⚡ Apply DSA-based message preprocessing
-    const preprocessedData = await this.performanceOptimizer.preprocessMessage(
-      userMessage, 
-      aiResponse, 
-      sessionId
-    );
-    
     const sessionData = await this.getSessionData(sessionId);
     
-    // Add messages to history with DSA optimization hints
+    // Add messages to history
     const userMessageObj = {
       role: 'user',
       content: userMessage,
       timestamp: new Date().toISOString(),
-      session_id: sessionId,
-      processingHints: preprocessedData.userHints
+      session_id: sessionId
     };
     
     const aiMessageObj = {
       role: 'assistant',
       content: aiResponse,
       timestamp: new Date().toISOString(),
-      session_id: sessionId,
-      processingHints: preprocessedData.aiHints
+      session_id: sessionId
     };
     
     sessionData.history.push(userMessageObj, aiMessageObj);
     
-    // ⚡ Extract important info with DSA optimization
-    const importantInfo = await this.performanceOptimizer.optimizeInformationExtraction(
-      userMessage, 
-      sessionData.history,
-      this.memory
-    );
+    // Extract and store important information
+    const importantInfo = this.memory.extractImportantInfo(userMessage, sessionData.history);
     
     // Update user profile
     this.updateUserProfile(sessionData.userProfile, importantInfo);
@@ -202,17 +132,9 @@ export class AdvancedSessionManager {
       sessionData.history = sessionData.history.slice(-this.maxHistoryLength);
     }
     
-    // Save updated session data with performance metrics
-    const processingTime = Date.now() - startTime;
-    sessionData.performanceMetrics = {
-      lastProcessingTime: processingTime,
-      dsaOptimized: true,
-      timestamp: new Date().toISOString()
-    };
-    
+    // Save updated session data
     await this.saveSessionData(sessionId, sessionData);
     
-    console.log(`⚡ Message processed with DSA optimization in ${processingTime}ms`);
     return sessionData;
   }
 
@@ -388,48 +310,17 @@ export class AdvancedSessionManager {
   }
 
   async getContextualPrompt(sessionId, userMessage) {
-    const startTime = Date.now();
-    
-    // 🧠 Try ultra-advanced contextual prompt with enhanced chat history learning
-    if (this.selfLearningEnabled) {
-      try {
-        const ultraPrompt = await this.ultraMemory.getOptimizedContextualPrompt(sessionId, userMessage);
-        if (ultraPrompt && ultraPrompt.prompt) {
-          console.log(`🧠 Ultra-advanced prompt with ${ultraPrompt.learningInsights} insights & ${ultraPrompt.chatHistoryItems} history items`);
-          console.log(`📊 Context accuracy: ${(ultraPrompt.contextualAccuracy * 100).toFixed(1)}%`);
-          return ultraPrompt.prompt;
-        }
-      } catch (error) {
-        console.warn('⚠️ Ultra-memory fallback, using standard prompt:', error.message);
-      }
-    }
-    
-    // ⚡ Try DSA-optimized contextual prompt cache first
-    const cachedPrompt = await this.performanceOptimizer.getCachedContextualPrompt(
-      sessionId, 
-      userMessage
-    );
-    
-    if (cachedPrompt) {
-      console.log('⚡ Retrieved contextual prompt from DSA cache (ultra-fast)');
-      return cachedPrompt;
-    }
-    
     const sessionData = await this.getSessionData(sessionId);
     
-    // Get relevant memories with DSA optimization
-    const relevantMemories = await this.performanceOptimizer.optimizeMemoryRetrieval(
-      sessionData.memories,
-      userMessage,
-      this.memory,
+    // Get relevant memories
+    const relevantMemories = this.memory.getRelevantMemories(
+      sessionData.memories, 
+      userMessage, 
       5
     );
     
-    // ⚡ Build contextual prompt with DSA optimization
-    let contextualPrompt = await this.performanceOptimizer.optimizePromptBuilding(
-      sessionData.userProfile,
-      this.buildBasePrompt.bind(this)
-    );
+    // Build contextual prompt with enhanced structure
+    let contextualPrompt = this.buildBasePrompt(sessionData.userProfile);
     
     // Add conversation history context
     if (sessionData.history.length > 0) {
@@ -469,16 +360,6 @@ export class AdvancedSessionManager {
       }
     }
     
-    // ⚡ Cache contextual prompt for future O(1) retrieval
-    const processingTime = Date.now() - startTime;
-    await this.performanceOptimizer.cacheContextualPrompt(
-      sessionId,
-      userMessage,
-      contextualPrompt,
-      processingTime
-    );
-    
-    console.log(`⚡ Contextual prompt generated with DSA optimization in ${processingTime}ms`);
     return contextualPrompt;
   }
 
@@ -528,11 +409,6 @@ export class AdvancedSessionManager {
   async clearSessionHistory(sessionId) {
     try {
       await this.kv.delete(`session:${sessionId}`);
-      
-      // ⚡ Clear DSA cache entries for this session
-      await this.performanceOptimizer.clearSessionCache(sessionId);
-      
-      console.log('⚡ Session cleared from both KV store and DSA cache');
       return true;
     } catch (error) {
       console.error('Error clearing session history:', error);
@@ -554,83 +430,5 @@ export class AdvancedSessionManager {
     );
 
     return `Previous topics discussed: ${topics.join(', ')}...`;
-  }
-  
-  /**
-   * 🧠 Get ultra-advanced session analytics with learning insights
-   * @param {string} sessionId - Session identifier
-   * @returns {Object} Comprehensive analytics with learning data
-   */
-  async getUltraSessionAnalytics(sessionId) {
-    if (!this.selfLearningEnabled) {
-      return { error: 'Self-learning not enabled' };
-    }
-    
-    try {
-      const analytics = await this.ultraMemory.getSessionAnalytics(sessionId);
-      const performanceStats = this.getPerformanceStats();
-      
-      return {
-        ...analytics,
-        systemPerformance: performanceStats,
-        ultraFeaturesEnabled: true,
-        selfLearningActive: true,
-        generatedAt: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error('Error getting ultra analytics:', error);
-      return { error: error.message };
-    }
-  }
-  
-  /**
-   * 📊 Get learning progress for a session
-   * @param {string} sessionId - Session identifier
-   * @returns {Object} Learning progress data
-   */
-  async getLearningProgress(sessionId) {
-    if (!this.selfLearningEnabled) {
-      return { learningEnabled: false };
-    }
-    
-    try {
-      const insights = await this.ultraMemory.learningEngine.getLearningInsights(sessionId);
-      const progress = await this.ultraMemory.learningEngine.getLearningProgress(sessionId);
-      
-      return {
-        learningEnabled: true,
-        totalInsights: insights.totalInsights,
-        intelligenceGain: insights.intelligenceGain,
-        progressPercentage: progress,
-        learningRate: insights.learningRate,
-        sessionOptimized: true
-      };
-    } catch (error) {
-      console.error('Error getting learning progress:', error);
-      return { error: error.message };
-    }
-  }
-  
-  /**
-   * 🎯 Toggle self-learning system
-   * @param {boolean} enabled - Enable/disable self-learning
-   */
-  toggleSelfLearning(enabled) {
-    this.selfLearningEnabled = enabled;
-    console.log(`🧠 Self-learning system ${enabled ? 'enabled' : 'disabled'}`);
-    return { selfLearningEnabled: this.selfLearningEnabled };
-  }
-  
-  /**
-   * Get DSA-optimized session metrics
-   * @param {string} sessionId - Session identifier
-   * @returns {Object} Session performance metrics
-   */
-  async getSessionPerformanceMetrics(sessionId) {
-    const sessionData = await this.getSessionData(sessionId);
-    return {
-      sessionMetrics: sessionData.performanceMetrics || {},
-      optimizerMetrics: this.performanceOptimizer.getSessionMetrics(sessionId)
-    };
   }
 }

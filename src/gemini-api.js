@@ -1,7 +1,6 @@
 import { IslamicPrompt } from './islamic-prompt.js';
 import { APIKeyManager } from './api-key-manager.js';
 import { InternetDataProcessor } from './internet-data-processor.js';
-import { PerformanceOptimizer } from './performance-optimizer.js';
 
 export class GeminiAPI {
   constructor(apiKeys) {
@@ -10,28 +9,10 @@ export class GeminiAPI {
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
     this.islamicPrompt = new IslamicPrompt();
     this.internetProcessor = new InternetDataProcessor();
-    this.performanceOptimizer = new PerformanceOptimizer();
   }
 
   async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = { enableStreaming: true }, userIP = null) {
-    const startTime = Date.now();
-    
     try {
-      // ⚡ Advanced DSA-based preprocessing for ultra-fast response
-      console.log('🚀 Starting DSA-optimized query preprocessing...');
-      const preprocessResult = await this.performanceOptimizer.preprocessQuery(
-        userInput, 
-        sessionId, 
-        { timestamp: startTime, languageInfo, contextualPrompt }
-      );
-      
-      // ⚡ Check for cached response (O(1) lookup)
-      if (preprocessResult.cachedResponse) {
-        console.log('⚡ Serving cached response (ultra-fast O(1) lookup)');
-        return streamingOptions.enableStreaming ? 
-          this.createStreamingCachedResponse(preprocessResult.cachedResponse) : 
-          preprocessResult.cachedResponse;
-      }
       // Validate input for security
       const validation = this.islamicPrompt.validateInput(userInput);
       if (!validation.isValid) {
@@ -40,13 +21,12 @@ export class GeminiAPI {
           validation.response;
       }
 
-      // Process internet data if needed (with optimization hints)
-      console.log('Processing query for internet data needs with DSA optimization...');
+      // Process internet data if needed
+      console.log('Processing query for internet data needs...');
       const internetData = await this.internetProcessor.processQuery(userInput, {
         sessionId,
         languageInfo,
-        contextualPrompt,
-        optimizationHints: preprocessResult.queryHints
+        contextualPrompt
       }, userIP);
 
       // Classify query type
@@ -82,15 +62,6 @@ ${debateFramework}` : ''}`;
       if (internetData.needsInternetData && internetData.enhancedPrompt) {
         console.log('Integrating internet data into prompt');
         finalPrompt = `${finalPrompt}\n\n${internetData.enhancedPrompt}`;
-      }
-      
-      // ⚡ Optimize prompt with DSA-based preprocessing results
-      if (preprocessResult.promptOptimizations) {
-        finalPrompt = await this.performanceOptimizer.optimizePrompt(
-          finalPrompt, 
-          preprocessResult.promptOptimizations
-        );
-        console.log('⚡ Applied DSA-based prompt optimizations');
       }
       
       // Use adaptive language detection with enhanced instructions
@@ -212,34 +183,11 @@ Respond naturally in the detected language and maintain consistency with user's 
       if (data.candidates && data.candidates[0] && data.candidates[0].content) {
         let responseText = data.candidates[0].content.parts[0].text;
         
-        // ⚡ Advanced DSA-based response optimization
-        const optimizationContext = {
-          userMessage: userInput,
-          sessionId,
-          internetData: internetData.data,
-          processingTime: Date.now() - startTime,
-          languageInfo,
-          queryType
-        };
+        // Post-process response for better formatting
+        responseText = this.postProcessResponse(responseText, queryType, languageInfo);
         
-        const optimizedResponse = await this.performanceOptimizer.optimizeResponse(
-          responseText,
-          optimizationContext
-        );
-        
-        // Post-process response for better formatting - fix property access
-        const optimizedContent = optimizedResponse?.optimizedResponse || optimizedResponse?.content || responseText;
-        const finalResponse = this.postProcessResponse(optimizedContent, queryType, languageInfo);
-        
-        // ⚡ Cache optimized response for future O(1) retrieval
-        await this.performanceOptimizer.cacheResponse(
-          userInput,
-          finalResponse,
-          sessionId
-        );
-        
-        console.log(`⚡ Response optimized: ${optimizedResponse.metrics.speedImprovement}% faster, length: ${finalResponse.length}`);
-        return finalResponse;
+        console.log(`Direct response generated successfully, length: ${responseText.length}`);
+        return responseText;
       } else {
         console.error('Unexpected response format:', data);
         throw new Error('Invalid response format from Gemini API');
@@ -248,17 +196,6 @@ Respond naturally in the detected language and maintain consistency with user's 
 
     } catch (error) {
       console.error('Gemini API error:', error);
-      
-      // ⚡ Use DSA-optimized error handling
-      const optimizedError = await this.performanceOptimizer.handleError(
-        error, 
-        { userInput, sessionId, processingTime: Date.now() - (startTime || Date.now()) }
-      );
-      
-      if (optimizedError.fallbackResponse) {
-        console.log('⚡ Using DSA-optimized fallback response');
-        return optimizedError.fallbackResponse;
-      }
       
       // Enhanced error handling for direct responses
       if (error.message.includes('API key not valid')) {
@@ -316,12 +253,7 @@ Aaj aap kisi Islamic topic par discuss karna chahenge?`,
   }
 
   postProcessResponse(responseText, queryType, languageInfo = {}) {
-    // Clean up response formatting - add null/undefined check
-    if (!responseText || typeof responseText !== 'string') {
-      console.warn('postProcessResponse received invalid responseText:', responseText);
-      return 'Sorry, there was an issue processing the response. Please try again.';
-    }
-    
+    // Clean up response formatting
     let cleanedText = responseText.trim();
     
     // Remove any markdown artifacts or extra whitespace
@@ -497,14 +429,6 @@ ${languageInstruction}
   getKeyStats() {
     return this.apiKeyManager.getKeyStats();
   }
-  
-  /**
-   * Get performance optimizer statistics
-   * @returns {Object} Performance statistics
-   */
-  getPerformanceStats() {
-    return this.performanceOptimizer.getMetrics();
-  }
 
   /**
    * Reset failed keys
@@ -532,7 +456,6 @@ ${languageInstruction}
     const postProcessResponse = this.postProcessResponse.bind(this);
     const streamTextInChunks = this.streamTextInChunks.bind(this);
     const createStreamingChunk = this.createStreamingChunk.bind(this);
-    const performanceOptimizer = this.performanceOptimizer;
 
     // Create a readable stream for streaming response
     const stream = new ReadableStream({
@@ -577,38 +500,14 @@ ${languageInstruction}
           if (data.candidates && data.candidates[0] && data.candidates[0].content) {
             let responseText = data.candidates[0].content.parts[0].text;
             
-            // ⚡ Apply DSA-based streaming optimizations
-            const optimizationContext = {
-              isStreaming: true,
-              userMessage: requestBody.contents[0].parts[0].text.split('## User Message\n')[1]?.split('\n## Adaptive Response Requirements')[0] || 'Unknown',
-              processingTime: Date.now() - Date.now(),
-              queryType: 'general',
-              language: 'english',
-              cacheKey: null,
-              optimizations: ['streaming']
-            };
+            // Post-process response
+            responseText = postProcessResponse(responseText, 'general', {});
             
-            // Add null check for responseText before optimization
-            if (!responseText || typeof responseText !== 'string') {
-              console.warn('Invalid responseText for optimization:', responseText);
-              responseText = 'Sorry, there was an issue with the response. Please try again.';
-            }
-            
-            const optimizedResponse = await performanceOptimizer.optimizeResponse(
-              responseText,
-              optimizationContext
-            );
-            
-            // Post-process response - fix property access and add null checks
-            const optimizedContent = optimizedResponse?.optimizedResponse || optimizedResponse?.content || responseText;
-            const finalResponse = postProcessResponse(optimizedContent, 'general', {});
-            
-            // Stream the response in chunks with DSA optimization
-            await streamTextInChunks(finalResponse, controller, {
+            // Stream the response in chunks
+            await streamTextInChunks(responseText, controller, {
               chunkSize,
               delay,
-              includeMetadata,
-              optimized: true
+              includeMetadata
             });
           } else {
             throw new Error('Invalid response format from Gemini API');
@@ -633,15 +532,15 @@ ${languageInstruction}
   }
 
   /**
-   * Stream text in chunks with configurable delay and DSA optimization
+   * Stream text in chunks with configurable delay
    * @param {string} text - Text to stream
    * @param {ReadableStreamDefaultController} controller - Stream controller
    * @param {Object} options - Streaming options
    */
   async streamTextInChunks(text, controller, options = {}) {
-    const { chunkSize = 50, delay = 50, includeMetadata = true, optimized = false } = options;
+    const { chunkSize = 50, delay = 50, includeMetadata = true } = options;
     
-    // Send initial metadata with optimization info
+    // Send initial metadata
     if (includeMetadata) {
       const startChunk = this.createStreamingChunk({
         type: 'start',
@@ -649,8 +548,7 @@ ${languageInstruction}
         metadata: {
           totalLength: text.length,
           estimatedChunks: Math.ceil(text.length / chunkSize),
-          timestamp: new Date().toISOString(),
-          dsaOptimized: optimized
+          timestamp: new Date().toISOString()
         }
       });
       controller.enqueue(new TextEncoder().encode(startChunk));

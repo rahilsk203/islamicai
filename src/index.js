@@ -409,11 +409,6 @@ export default {
           let fullResponse = '';
           
           try {
-            // Ensure stream is valid and has getReader method
-            if (!stream || typeof stream.getReader !== 'function') {
-              throw new Error('Invalid stream object received');
-            }
-            
             const reader = stream.getReader();
             
             while (true) {
@@ -466,20 +461,13 @@ export default {
     } catch (error) {
       console.error('Streaming handler error:', error);
       
-      // ⚡ Use DSA-optimized error handling
-      const optimizedError = await geminiAPI.performanceOptimizer.handleError(
-        error,
-        { userMessage, sessionId, streamingOptions }
-      );
-      
       // Capture method to avoid 'this' context issues
       const createErrorChunk = this.createErrorChunk;
       
-      // Return error as streaming response with DSA fallback
+      // Return error as streaming response
       const errorStream = new ReadableStream({
         start: (controller) => {
-          const errorMessage = optimizedError.fallbackResponse || 'Streaming service temporarily unavailable';
-          const errorChunk = createErrorChunk(errorMessage);
+          const errorChunk = createErrorChunk('Streaming service temporarily unavailable');
           controller.enqueue(new TextEncoder().encode(errorChunk));
           controller.close();
         }

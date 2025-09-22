@@ -1,71 +1,39 @@
 /**
- * 🚀 Ultra-Advanced Al Jazeera News Scraper with AI Intelligence
+ * Advanced Al Jazeera News Scraper
  * DSA-level implementation with intelligent news scraping, categorization, and search
- * Features: Smart article detection, sentiment analysis, trending topics, user-friendly responses
  * Supports multiple Al Jazeera regional sites with advanced caching and filtering
  */
 
 export class AlJazeeraNewsScraper {
   constructor() {
-    // Al Jazeera URLs for different regions with enhanced metadata
+    // Al Jazeera URLs for different regions
     this.alJazeeraUrls = {
-      main: { url: 'https://www.aljazeera.com/', priority: 10, description: 'Global News' },
-      africa: { url: 'https://www.aljazeera.com/africa/', priority: 8, description: 'African Affairs' },
-      asia: { url: 'https://www.aljazeera.com/asia/', priority: 9, description: 'Asian News' },
-      usCanada: { url: 'https://www.aljazeera.com/us-canada/', priority: 7, description: 'North American News' },
-      latinAmerica: { url: 'https://www.aljazeera.com/latin-america/', priority: 6, description: 'Latin American News' },
-      europe: { url: 'https://www.aljazeera.com/europe/', priority: 7, description: 'European News' },
-      asiaPacific: { url: 'https://www.aljazeera.com/asia-pacific/', priority: 8, description: 'Asia-Pacific News' },
-      middleEast: { url: 'https://www.aljazeera.com/middle-east/', priority: 10, description: 'Middle Eastern Affairs' },
-      live: { url: 'https://www.aljazeera.com/live', priority: 9, description: 'Live Breaking News' }
+      main: 'https://www.aljazeera.com/',
+      africa: 'https://www.aljazeera.com/africa/',
+      asia: 'https://www.aljazeera.com/asia/',
+      usCanada: 'https://www.aljazeera.com/us-canada/',
+      latinAmerica: 'https://www.aljazeera.com/latin-america/',
+      europe: 'https://www.aljazeera.com/europe/',
+      asiaPacific: 'https://www.aljazeera.com/asia-pacific/',
+      middleEast: 'https://www.aljazeera.com/middle-east/',
+      live: 'https://www.aljazeera.com/live'
     };
     
-    // 🧠 Advanced AI-powered data structures for intelligent processing
-    this.newsDatabase = new IntelligentNewsDatabase();
-    this.searchEngine = new AINewsSearchEngine();
-    this.categoryManager = new SmartCategoryManager();
-    this.cacheManager = new OptimizedCacheManager();
-    this.sentimentAnalyzer = new NewsSentimentAnalyzer();
-    this.trendingAnalyzer = new TrendingTopicsAnalyzer();
-    this.userFriendlyFormatter = new UserFriendlyFormatter();
+    // Advanced data structures for efficient storage and retrieval
+    this.newsDatabase = new NewsDatabase();
+    this.searchEngine = new NewsSearchEngine();
+    this.categoryManager = new NewsCategoryManager();
+    this.cacheManager = new NewsCacheManager();
     
-    // 🚀 Enhanced scraping configuration with intelligence
+    // Scraping configuration
     this.scrapingConfig = {
-      maxConcurrentRequests: 8, // Increased for better performance
-      requestTimeout: 20000, // Increased timeout for reliability
-      retryAttempts: 5, // More retries for resilience
-      rateLimitDelay: 800, // Optimized delay
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      intelligentParsing: true, // Enable AI-powered content extraction
-      sentimentAnalysis: true, // Enable sentiment scoring
-      trendingDetection: true, // Enable trending topics detection
-      userFriendlyMode: true, // Enable user-friendly response formatting
-      islamicContextAware: true, // Enable Islamic context detection
-      cacheDuration: 20 * 60 * 1000, // 20 minutes for fresher news
-      maxCachedArticles: 2000, // Increased cache capacity
-      smartCacheInvalidation: true, // Enable intelligent cache management
-      adaptiveTimeout: true, // Enable adaptive timeout based on response time
+      maxConcurrentRequests: 5,
+      requestTimeout: 15000,
+      retryAttempts: 3,
+      rateLimitDelay: 1000,
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      cacheDuration: 30 * 60 * 1000, // 30 minutes
       maxArticlesPerCategory: 50
-    };
-    
-    // 🎯 Advanced Islamic keywords for better context detection
-    this.islamicKeywords = {
-      religious: ['islam', 'muslim', 'islamic', 'quran', 'hadith', 'prophet', 'muhammad', 'allah', 'mosque', 'masjid'],
-      practices: ['prayer', 'salah', 'namaz', 'ramadan', 'eid', 'hajj', 'umrah', 'zakat', 'fasting'],
-      community: ['ummah', 'scholars', 'imam', 'sheikh', 'islamic community', 'muslim community'],
-      places: ['mecca', 'medina', 'jerusalem', 'palestine', 'middle east', 'muslim countries'],
-      events: ['ramadan', 'eid ul fitr', 'eid ul adha', 'muharram', 'mawlid', 'islamic calendar']
-    };
-    
-    // 📊 Performance metrics tracking
-    this.metrics = {
-      totalScrapingRequests: 0,
-      successfulScrapes: 0,
-      failedScrapes: 0,
-      averageResponseTime: 0,
-      cacheHitRate: 0,
-      islamicContentDetected: 0,
-      userFriendlyResponsesGenerated: 0
     };
     
     // News parsing patterns for Al Jazeera
@@ -99,15 +67,6 @@ export class AlJazeeraNewsScraper {
     };
     
     this.isInitialized = false;
-    
-    // 🌟 User experience enhancements
-    this.userExperienceConfig = {
-      maxSummaryLength: 200, // Concise summaries for better readability
-      includeEmojis: true, // Add relevant emojis for visual appeal
-      useLocalizedFormats: true, // Format dates/times based on user locale
-      provideTrendingInsights: true, // Include trending topic insights
-      islamicContextAlways: true // Always try to provide Islamic context
-    };
   }
 
   /**
@@ -198,12 +157,10 @@ export class AlJazeeraNewsScraper {
   async scrapeRegionNews(region, options = {}) {
     const { maxArticles = 20, includeContent = true } = options;
     
-    const regionConfig = this.alJazeeraUrls[region];
-    if (!regionConfig) {
+    const url = this.alJazeeraUrls[region];
+    if (!url) {
       throw new Error(`Unknown region: ${region}`);
     }
-    
-    const url = regionConfig.url || regionConfig; // Support both object and string formats
     
     try {
       console.log(`Scraping news from ${region}: ${url}`);
@@ -383,23 +340,17 @@ export class AlJazeeraNewsScraper {
   }
 
   /**
-   * 🧠 Enhanced intelligent article scraping with AI analysis
+   * Scrape individual article
    * @param {string} url - Article URL
    * @param {string} region - Region name
    * @param {boolean} includeContent - Whether to include full content
-   * @returns {Promise<Object>} Article data with intelligence
+   * @returns {Promise<Object>} Article data
    */
   async scrapeArticle(url, region, includeContent = true) {
-    const startTime = Date.now();
-    
     try {
-      this.metrics.totalScrapingRequests++;
-      
-      console.log(`🚀 Intelligently scraping article: ${url.substring(0, 50)}...`);
-      
       const content = await this.fetchPageWithRetry(url);
       
-      // 🧐 Extract article data using intelligent patterns
+      // Extract article data using intelligent patterns
       const article = {
         id: this.generateArticleId(url),
         url,
@@ -411,109 +362,46 @@ export class AlJazeeraNewsScraper {
         category: this.extractCategory(url, content),
         tags: this.extractTags(content),
         imageUrl: this.extractImageUrl(content, url),
-        scrapedAt: new Date().toISOString(),
-        processingTime: Date.now() - startTime
+        scrapedAt: new Date().toISOString()
       };
-      
-      // ✨ Apply advanced AI intelligence
-      if (this.scrapingConfig.intelligentParsing) {
-        // Calculate Islamic relevance score
-        article.islamicRelevance = this.calculateIslamicRelevance(article);
-        
-        // Add sentiment analysis
-        if (this.scrapingConfig.sentimentAnalysis) {
-          article.sentiment = await this.sentimentAnalyzer.analyzeSentiment(article);
-        }
-        
-        // Detect trending keywords
-        if (this.scrapingConfig.trendingDetection) {
-          article.trendingKeywords = this.trendingAnalyzer.extractTrendingKeywords(article);
-        }
-        
-        // Generate user-friendly summary
-        if (this.scrapingConfig.userFriendlyMode) {
-          article.userFriendlySummary = this.userFriendlyFormatter.createFriendlySummary(article);
-        }
-      }
       
       // Extract full content if requested
       if (includeContent) {
         article.content = this.extractContent(content);
-        article.wordCount = article.content ? article.content.split(' ').length : 0;
-        
-        // Enhanced content analysis
-        if (article.content) {
-          article.readingTime = Math.ceil(article.wordCount / 200); // Average reading speed
-          article.contentQuality = this.assessContentQuality(article.content);
-        }
+        article.wordCount = this.countWords(article.content);
       }
       
-      // Calculate importance score with multiple factors
-      article.importanceScore = this.calculateEnhancedImportanceScore(article);
-      
-      // Add user experience enhancements
-      if (this.userExperienceConfig.includeEmojis) {
-        article.categoryEmoji = this.getCategoryEmoji(article.category);
+      // Validate article
+      if (!article.title || article.title.length < 10) {
+        console.log(`Skipping article with invalid title: ${url}`);
+        return null;
       }
       
-      this.metrics.successfulScrapes++;
-      
-      if (article.islamicRelevance > 0.3) {
-        this.metrics.islamicContentDetected++;
-      }
-      
-      console.log(`✅ Article scraped successfully: "${article.title?.substring(0, 40)}..."`);
+      // Add sentiment and importance scores
+      article.sentimentScore = this.calculateSentimentScore(article.title + ' ' + (article.summary || ''));
+      article.importanceScore = this.calculateImportanceScore(article);
       
       return article;
       
     } catch (error) {
-      this.metrics.failedScrapes++;
-      console.error(`❌ Failed to scrape article ${url}:`, error.message);
+      console.error(`Failed to scrape article ${url}:`, error);
       return null;
     }
   }
 
-  /**
-   * 🔧 Enhanced helper methods for intelligent extraction
-   */
+  // Helper methods
   extractTitle(content) {
-    // Enhanced title extraction with multiple fallback strategies
-    const titlePatterns = [
-      /<title[^>]*>([^<]+)</i,
-      /<h1[^>]*class=["'][^"']*title[^"']*["'][^>]*>([^<]+)</i,
-      /<h1[^>]*>([^<]+)</i,
-      /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i
-    ];
-    
-    for (const pattern of titlePatterns) {
-      const match = content.match(pattern);
-      if (match && match[1]) {
-        const title = this.cleanText(match[1]).replace(/ - Al Jazeera$/, '');
-        if (title.length > 10) {
-          return title;
-        }
-      }
+    const titleMatch = content.match(/<title[^>]*>([^<]+)</i);
+    if (titleMatch && titleMatch[1]) {
+      return this.cleanText(titleMatch[1]).replace(/ - Al Jazeera$/, '');
     }
     return 'Untitled Article';
   }
 
   extractSummary(content) {
-    // Enhanced summary extraction with intelligent content detection
-    const summaryPatterns = [
-      /<meta\s+name=["']description["']\s+content=["']([^"']{50,500})["']/i,
-      /<meta\s+property=["']og:description["']\s+content=["']([^"']{50,500})["']/i,
-      /<p[^>]*class=["'][^"']*summary[^"']*["'][^>]*>([^<]{50,300})</i,
-      /<div[^>]*class=["'][^"']*excerpt[^"']*["'][^>]*>([^<]{50,300})</i
-    ];
-    
-    for (const pattern of summaryPatterns) {
-      const match = content.match(pattern);
-      if (match && match[1]) {
-        const summary = this.cleanText(match[1]);
-        if (summary.length > 50) {
-          return summary.substring(0, 300);
-        }
-      }
+    const metaMatch = content.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i);
+    if (metaMatch && metaMatch[1]) {
+      return this.cleanText(metaMatch[1]);
     }
     return '';
   }
@@ -613,136 +501,12 @@ export class AlJazeeraNewsScraper {
     return 0; // Simplified
   }
 
-  /**
-   * 🧐 Calculate Islamic relevance score using advanced keyword analysis
-   */
-  calculateIslamicRelevance(article) {
-    const text = `${article.title} ${article.summary || ''}`.toLowerCase();
-    let relevanceScore = 0;
-    let totalWeight = 0;
-    
-    // Weight different keyword categories
-    Object.entries(this.islamicKeywords).forEach(([category, keywords]) => {
-      const categoryWeight = {
-        religious: 3,
-        practices: 2.5,
-        community: 2,
-        places: 2.5,
-        events: 2
-      }[category] || 1;
-      
-      const matches = keywords.filter(keyword => text.includes(keyword)).length;
-      if (matches > 0) {
-        relevanceScore += matches * categoryWeight;
-        totalWeight += keywords.length * categoryWeight;
-      }
-    });
-    
-    // Normalize score between 0 and 1
-    const normalizedScore = totalWeight > 0 ? relevanceScore / totalWeight : 0;
-    
-    // Boost score for Middle East region (often Islamic-relevant)
-    if (article.region === 'middleEast') {
-      return Math.min(1, normalizedScore + 0.2);
-    }
-    
-    return Math.min(1, Math.max(0, normalizedScore));
-  }
-
-  /**
-   * 📊 Calculate enhanced importance score with multiple factors
-   */
-  calculateEnhancedImportanceScore(article) {
-    let score = 0.5; // Base score
-    
-    // Content quality factors
-    if (article.wordCount > 500) score += 0.15;
-    if (article.wordCount > 1000) score += 0.1;
-    
-    // Recency factor (boost recent articles)
+  calculateImportanceScore(article) {
+    let score = 0.5;
+    if (article.wordCount > 500) score += 0.2;
     const hoursOld = (Date.now() - new Date(article.publishedAt).getTime()) / (1000 * 60 * 60);
-    if (hoursOld < 6) score += 0.3;
-    else if (hoursOld < 24) score += 0.2;
-    else if (hoursOld < 72) score += 0.1;
-    
-    // Islamic content boost
-    if (article.islamicRelevance > 0.5) score += 0.2;
-    
-    // Regional importance
-    const regionWeight = this.alJazeeraUrls[article.region]?.priority || 5;
-    score += (regionWeight - 5) * 0.02;
-    
-    // Content quality indicators
-    if (article.author && article.author !== 'Al Jazeera') score += 0.05;
-    if (article.imageUrl) score += 0.05;
-    if (article.summary && article.summary.length > 100) score += 0.1;
-    
+    if (hoursOld < 24) score += 0.3;
     return Math.min(1, Math.max(0, score));
-  }
-
-  /**
-   * 🎨 Get category emoji for visual enhancement
-   */
-  getCategoryEmoji(category) {
-    const emojiMap = {
-      'islamic': '🕌',
-      'politics': '🏛️',
-      'economy': '💰',
-      'society': '👥',
-      'technology': '💻',
-      'sports': '⚽',
-      'health': '🏥',
-      'education': '📚',
-      'environment': '🌍',
-      'middle east': '🏜️',
-      'palestine': '🇵🇸',
-      'general': '📰'
-    };
-    return emojiMap[category?.toLowerCase()] || emojiMap.general;
-  }
-
-  /**
-   * 🚀 Assess content quality based on multiple criteria
-   */
-  assessContentQuality(content) {
-    if (!content) return 'poor';
-    
-    let qualityScore = 0;
-    
-    // Length indicators
-    if (content.length > 1000) qualityScore += 2;
-    else if (content.length > 500) qualityScore += 1;
-    
-    // Structure indicators
-    const paragraphs = content.split('\n\n').length;
-    if (paragraphs > 3) qualityScore += 1;
-    
-    // Content depth indicators
-    const sentences = content.split('.').length;
-    if (sentences > 10) qualityScore += 1;
-    
-    // Professional writing indicators
-    if (content.includes('according to') || content.includes('sources say')) qualityScore += 1;
-    
-    if (qualityScore >= 4) return 'excellent';
-    if (qualityScore >= 2) return 'good';
-    if (qualityScore >= 1) return 'fair';
-    return 'poor';
-  }
-
-  /**
-   * 📈 Get comprehensive scraping metrics
-   */
-  getScrapingMetrics() {
-    const totalRequests = this.metrics.totalScrapingRequests;
-    const successRate = totalRequests > 0 ? (this.metrics.successfulScrapes / totalRequests * 100).toFixed(1) : 0;
-    
-    return {
-      ...this.metrics,
-      successRate: `${successRate}%`,
-      islamicContentRate: totalRequests > 0 ? `${(this.metrics.islamicContentDetected / totalRequests * 100).toFixed(1)}%` : '0%',
-      averageResponseTime: `${this.metrics.averageResponseTime.toFixed(0)}ms`
-    };
   }
 
   combineRegionResults(regionResults) {
@@ -952,385 +716,5 @@ class Semaphore {
       this.permits--;
       resolve();
     }
-  }
-}
-
-// 🧠 Enhanced Intelligent Data Structures for Advanced News Processing
-
-/**
- * 🚀 Intelligent News Database with AI-powered indexing
- */
-class IntelligentNewsDatabase extends NewsDatabase {
-  constructor() {
-    super();
-    this.aiIndex = new Map(); // AI-powered content indexing
-    this.semanticSearch = new Map(); // Semantic search capabilities
-    this.islamicContentIndex = new Map(); // Islamic content classification
-  }
-
-  async storeArticle(article) {
-    await super.storeArticle(article);
-    
-    // AI-powered indexing
-    if (article.islamicRelevance > 0.3) {
-      this.islamicContentIndex.set(article.id, article.islamicRelevance);
-    }
-    
-    // Semantic indexing for better search
-    const semanticKeys = this.generateSemanticKeys(article);
-    semanticKeys.forEach(key => {
-      if (!this.semanticSearch.has(key)) {
-        this.semanticSearch.set(key, new Set());
-      }
-      this.semanticSearch.get(key).add(article.id);
-    });
-  }
-
-  generateSemanticKeys(article) {
-    const keys = [];
-    const text = `${article.title} ${article.summary || ''}`.toLowerCase();
-    
-    // Generate semantic keys based on content
-    ['politics', 'economy', 'society', 'religion', 'technology', 'sports'].forEach(topic => {
-      if (text.includes(topic)) keys.push(topic);
-    });
-    
-    return keys;
-  }
-
-  async getIslamicContent() {
-    const islamicIds = Array.from(this.islamicContentIndex.keys());
-    return islamicIds.map(id => this.articles.get(id)).filter(Boolean);
-  }
-}
-
-/**
- * 🔍 AI-powered News Search Engine with advanced relevance scoring
- */
-class AINewsSearchEngine extends NewsSearchEngine {
-  async initialize() {
-    await super.initialize();
-    this.searchHistory = new Map();
-    this.trendingQueries = new Map();
-    console.log('🤖 AI News Search Engine initialized with advanced capabilities');
-  }
-
-  searchArticles(articles, query) {
-    // Enhanced search with AI relevance scoring
-    const results = super.searchArticles(articles, query);
-    
-    // Apply AI enhancements
-    return results.map(article => {
-      // Boost Islamic content if query has Islamic keywords
-      if (this.hasIslamicKeywords(query) && article.islamicRelevance > 0.3) {
-        article.relevanceScore += article.islamicRelevance * 2;
-      }
-      
-      // Boost recent articles
-      const hoursOld = (Date.now() - new Date(article.publishedAt).getTime()) / (1000 * 60 * 60);
-      if (hoursOld < 24) {
-        article.relevanceScore += 1;
-      }
-      
-      // Boost trending content
-      if (article.trendingKeywords && article.trendingKeywords.length > 0) {
-        article.relevanceScore += 0.5;
-      }
-      
-      return article;
-    }).sort((a, b) => b.relevanceScore - a.relevanceScore);
-  }
-
-  hasIslamicKeywords(query) {
-    const islamicTerms = ['islam', 'muslim', 'islamic', 'quran', 'hadith', 'mosque', 'ramadan', 'eid', 'hajj', 'palestine'];
-    const lowerQuery = query.toLowerCase();
-    return islamicTerms.some(term => lowerQuery.includes(term));
-  }
-
-  recordSearch(query, results) {
-    // Track search patterns for improvement
-    this.searchHistory.set(query, {
-      timestamp: Date.now(),
-      resultCount: results.length,
-      topRelevance: results[0]?.relevanceScore || 0
-    });
-  }
-}
-
-/**
- * 🎯 Smart Category Manager with intelligent classification
- */
-class SmartCategoryManager extends NewsCategoryManager {
-  async initialize() {
-    await super.initialize();
-    this.aiClassifier = new Map();
-    this.categoryPatterns = {
-      'islamic': ['islam', 'muslim', 'mosque', 'quran', 'hadith', 'ramadan', 'eid'],
-      'politics': ['government', 'election', 'parliament', 'president', 'minister'],
-      'economy': ['economy', 'business', 'market', 'finance', 'trade'],
-      'society': ['community', 'education', 'health', 'culture', 'social'],
-      'technology': ['technology', 'digital', 'internet', 'ai', 'computer'],
-      'sports': ['football', 'cricket', 'sports', 'match', 'tournament']
-    };
-    console.log('🎯 Smart Category Manager initialized with AI classification');
-  }
-
-  classifyArticle(article) {
-    const text = `${article.title} ${article.summary || ''}`.toLowerCase();
-    let bestCategory = 'general';
-    let maxScore = 0;
-
-    Object.entries(this.categoryPatterns).forEach(([category, keywords]) => {
-      const score = keywords.reduce((count, keyword) => {
-        return count + (text.includes(keyword) ? 1 : 0);
-      }, 0);
-      
-      if (score > maxScore) {
-        maxScore = score;
-        bestCategory = category;
-      }
-    });
-
-    return { category: bestCategory, confidence: maxScore / this.categoryPatterns[bestCategory]?.length || 0 };
-  }
-}
-
-/**
- * ⚡ Optimized Cache Manager with intelligent caching strategies
- */
-class OptimizedCacheManager extends NewsCacheManager {
-  constructor() {
-    super();
-    this.hitCount = 0;
-    this.missCount = 0;
-    this.smartInvalidation = true;
-    this.adaptiveTiming = new Map();
-  }
-
-  async initialize() {
-    await super.initialize();
-    console.log('⚡ Optimized Cache Manager initialized with smart caching');
-  }
-
-  async getCachedNews(regions) {
-    const result = await super.getCachedNews(regions);
-    
-    if (result) {
-      this.hitCount++;
-      console.log(`📈 Cache hit! Hit rate: ${(this.hitCount / (this.hitCount + this.missCount) * 100).toFixed(1)}%`);
-    } else {
-      this.missCount++;
-    }
-    
-    return result;
-  }
-
-  async cacheNews(newsData, regions) {
-    await super.cacheNews(newsData, regions);
-    
-    // Adaptive cache timing based on content freshness
-    const avgAge = this.calculateAverageArticleAge(newsData.articles);
-    const adaptiveTimeout = avgAge < 3 ? 15 * 60 * 1000 : 30 * 60 * 1000; // 15 or 30 minutes
-    
-    const key = regions.sort().join(',');
-    this.adaptiveTiming.set(key, adaptiveTimeout);
-  }
-
-  calculateAverageArticleAge(articles) {
-    if (!articles || articles.length === 0) return 24;
-    
-    const totalHours = articles.reduce((sum, article) => {
-      const hours = (Date.now() - new Date(article.publishedAt).getTime()) / (1000 * 60 * 60);
-      return sum + hours;
-    }, 0);
-    
-    return totalHours / articles.length;
-  }
-
-  getCacheStats() {
-    return {
-      hitRate: this.hitCount / (this.hitCount + this.missCount) * 100,
-      totalRequests: this.hitCount + this.missCount,
-      cacheSize: this.cache.size
-    };
-  }
-}
-
-/**
- * 📊 News Sentiment Analyzer for emotional context
- */
-class NewsSentimentAnalyzer {
-  constructor() {
-    this.positiveWords = ['peace', 'success', 'progress', 'celebration', 'victory', 'hope', 'improve', 'positive', 'good', 'great'];
-    this.negativeWords = ['war', 'conflict', 'crisis', 'problem', 'attack', 'violence', 'death', 'negative', 'bad', 'terrible'];
-    this.neutralWords = ['report', 'announce', 'state', 'said', 'according', 'official', 'meeting', 'discuss'];
-  }
-
-  async analyzeSentiment(article) {
-    const text = `${article.title} ${article.summary || ''}`.toLowerCase();
-    
-    let positiveScore = 0;
-    let negativeScore = 0;
-    let neutralScore = 0;
-
-    this.positiveWords.forEach(word => {
-      if (text.includes(word)) positiveScore++;
-    });
-    
-    this.negativeWords.forEach(word => {
-      if (text.includes(word)) negativeScore++;
-    });
-    
-    this.neutralWords.forEach(word => {
-      if (text.includes(word)) neutralScore++;
-    });
-
-    const total = positiveScore + negativeScore + neutralScore;
-    
-    if (total === 0) {
-      return { sentiment: 'neutral', confidence: 0.5, scores: { positive: 0, negative: 0, neutral: 1 } };
-    }
-
-    const scores = {
-      positive: positiveScore / total,
-      negative: negativeScore / total,
-      neutral: neutralScore / total
-    };
-
-    let sentiment = 'neutral';
-    let confidence = 0.5;
-    
-    if (scores.positive > scores.negative && scores.positive > scores.neutral) {
-      sentiment = 'positive';
-      confidence = scores.positive;
-    } else if (scores.negative > scores.positive && scores.negative > scores.neutral) {
-      sentiment = 'negative';
-      confidence = scores.negative;
-    }
-
-    return { sentiment, confidence, scores };
-  }
-}
-
-/**
- * 📈 Trending Topics Analyzer for identifying hot topics
- */
-class TrendingTopicsAnalyzer {
-  constructor() {
-    this.trendingWords = new Map();
-    this.timeWindow = 24 * 60 * 60 * 1000; // 24 hours
-  }
-
-  extractTrendingKeywords(article) {
-    const text = `${article.title} ${article.summary || ''}`.toLowerCase();
-    const words = text.split(/\s+/).filter(word => 
-      word.length > 3 && 
-      !['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'had', 'have', 'will', 'this', 'that', 'with', 'from', 'they', 'been', 'said'].includes(word)
-    );
-
-    const keywords = [];
-    words.forEach(word => {
-      const count = this.trendingWords.get(word) || 0;
-      this.trendingWords.set(word, count + 1);
-      
-      if (count > 2) { // Word appears in multiple articles
-        keywords.push({ word, frequency: count + 1 });
-      }
-    });
-
-    return keywords.sort((a, b) => b.frequency - a.frequency).slice(0, 5);
-  }
-
-  getTrendingTopics(limit = 10) {
-    return Array.from(this.trendingWords.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
-      .map(([word, count]) => ({ topic: word, mentions: count }));
-  }
-}
-
-/**
- * 🌟 User-Friendly Formatter for better readability
- */
-class UserFriendlyFormatter {
-  constructor() {
-    this.emojiMap = {
-      'islamic': '🕌',
-      'politics': '🏛️',
-      'economy': '💰',
-      'society': '👥',
-      'technology': '💻',
-      'sports': '⚽',
-      'health': '🏥',
-      'education': '📚',
-      'environment': '🌍',
-      'general': '📰'
-    };
-  }
-
-  createFriendlySummary(article) {
-    if (!article.summary) return 'No summary available.';
-    
-    let summary = article.summary.substring(0, 150);
-    if (article.summary.length > 150) {
-      summary += '...';
-    }
-
-    // Add emoji based on category
-    const emoji = this.emojiMap[article.category] || this.emojiMap.general;
-    
-    return `${emoji} ${summary}`;
-  }
-
-  formatPublishTime(publishedAt) {
-    const now = new Date();
-    const published = new Date(publishedAt);
-    const diffMs = now - published;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffHours < 1) {
-      return 'Just now';
-    } else if (diffHours < 24) {
-      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    } else if (diffDays < 7) {
-      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    } else {
-      return published.toLocaleDateString();
-    }
-  }
-
-  generateUserFriendlyResponse(articles, query) {
-    if (!articles || articles.length === 0) {
-      return `😔 I couldn't find any recent news about "${query}". Would you like me to search for something else or provide Islamic guidance on a related topic?`;
-    }
-
-    let response = `📰 I found ${articles.length} relevant news article${articles.length > 1 ? 's' : ''} about "${query}":\n\n`;
-    
-    articles.slice(0, 3).forEach((article, index) => {
-      const emoji = this.emojiMap[article.category] || '📰';
-      const timeAgo = this.formatPublishTime(article.publishedAt);
-      
-      response += `${emoji} **${article.title}**\n`;
-      response += `🌍 ${article.region} • ⏰ ${timeAgo}\n`;
-      
-      if (article.userFriendlySummary) {
-        response += `${article.userFriendlySummary}\n`;
-      }
-      
-      if (article.islamicRelevance > 0.5) {
-        response += `🕌 *Islamic relevance: High*\n`;
-      }
-      
-      response += `🔗 [Read full article](${article.url})\n\n`;
-    });
-
-    if (articles.length > 3) {
-      response += `... and ${articles.length - 3} more articles available.\n\n`;
-    }
-
-    response += `💡 *Would you like me to provide Islamic guidance on any of these topics?*`;
-    
-    return response;
   }
 }
