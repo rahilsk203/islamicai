@@ -1,13 +1,19 @@
 /**
  * Location-based Prayer Time Service for IslamicAI
  * Detects user location via IP and provides accurate prayer times
+ * Now includes Times Prayer website integration
  */
+
+import { TimesPrayerScraper } from './times-prayer-scraper.js';
 
 export class LocationPrayerService {
   constructor() {
     this.prayerTimeCache = new Map();
     this.locationCache = new Map();
     this.cacheTimeout = 30 * 60 * 1000; // 30 minutes
+    
+    // Initialize Times Prayer scraper
+    this.timesPrayerScraper = new TimesPrayerScraper();
     
     // Major Islamic cities with coordinates
     this.islamicCities = {
@@ -590,5 +596,67 @@ export class LocationPrayerService {
         timeout: this.cacheTimeout
       }
     };
+  }
+
+  /**
+   * Get prayer times directly from Times Prayer website
+   * @param {string} cityName - City name
+   * @param {string} countryCode - Country code (optional)
+   * @returns {Promise<Object>} Prayer times from Times Prayer
+   */
+  async getTimesPrayerData(cityName, countryCode = null) {
+    try {
+      return await this.timesPrayerScraper.getPrayerTimesForCity(cityName, countryCode);
+    } catch (error) {
+      console.error('Times Prayer scraper error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get enhanced prayer info with Times Prayer integration
+   * @param {string} userIP - User's IP address
+   * @returns {Promise<Object>} Enhanced prayer information
+   */
+  async getEnhancedPrayerInfo(userIP) {
+    try {
+      console.log(`Getting enhanced prayer info for IP: ${userIP}`);
+      
+      // Get user location
+      const location = await this.getUserLocation(userIP);
+      
+      // Try Times Prayer scraper first for accurate times
+      try {
+        const timesPrayerData = await this.timesPrayerScraper.getPrayerTimesForLocation(userIP);
+        
+        if (timesPrayerData && !timesPrayerData.fallback) {
+          console.log(`Successfully got Times Prayer data for ${location.city}`);
+          
+          return {
+            location: location,
+            times: timesPrayerData.times,
+            hijriDate: timesPrayerData.hijriDate,
+            qiblaDirection: this.calculateQiblaDirection(
+              this.islamicCities[location.city?.toLowerCase()]?.lat || 21.3891,
+              this.islamicCities[location.city?.toLowerCase()]?.lng || 39.8579
+            ),
+            nextPrayer: timesPrayerData.nextPrayer,
+            source: 'Times Prayer Website',
+            url: timesPrayerData.url,
+            timestamp: new Date().toISOString(),
+            enhanced: true
+          };
+        }
+      } catch (timesPrayerError) {
+        console.log('Times Prayer failed, falling back to calculation:', timesPrayerError.message);
+      }
+      
+      // Fallback to existing method
+      return await this.getPrayerInfoForUser(userIP);
+      
+    } catch (error) {
+      console.error('Enhanced prayer info error:', error);
+      return await this.getPrayerInfoForUser(userIP);
+    }
   }
 }

@@ -21,13 +21,26 @@ export class GeminiAPI {
           validation.response;
       }
 
-      // Process internet data if needed
-      console.log('Processing query for internet data needs...');
+      // Process internet data if needed with enhanced logging
+      console.log(`Processing query for internet data needs: "${userInput}"`);
       const internetData = await this.internetProcessor.processQuery(userInput, {
         sessionId,
         languageInfo,
         contextualPrompt
       }, userIP);
+      
+      // Log internet data processing results
+      console.log('Internet data processing results:', {
+        needsInternetData: internetData.needsInternetData,
+        reason: internetData.reason,
+        hasData: !!internetData.data,
+        hasEnhancedPrompt: !!internetData.enhancedPrompt,
+        searchResults: internetData.searchResults ? {
+          success: internetData.searchResults.success,
+          resultsCount: internetData.searchResults.results?.length || 0,
+          isAdvancedSearch: internetData.searchResults.fromCache !== undefined
+        } : null
+      });
 
       // Classify query type
       const queryType = this.islamicPrompt.classifyQuery(userInput);
@@ -58,10 +71,21 @@ ${debateFramework}` : ''}`;
         `${contextualPrompt}\n\n${enhancedSystemPrompt}` : 
         enhancedSystemPrompt;
       
-      // Add internet data if available
+      // Add internet data if available and enhance with advanced search context
       if (internetData.needsInternetData && internetData.enhancedPrompt) {
         console.log('Integrating internet data into prompt');
         finalPrompt = `${finalPrompt}\n\n${internetData.enhancedPrompt}`;
+        
+        // Add additional context about the search strategy if it's advanced search
+        if (internetData.searchResults && internetData.searchResults.searchStrategy) {
+          finalPrompt += `\n\n## Search Context
+This information was retrieved using advanced search techniques with the following strategy:
+- Focus: ${internetData.searchResults.searchStrategy.focus}
+- Temporal Context: ${internetData.searchResults.searchStrategy.temporal}
+- Complexity: ${internetData.searchResults.searchStrategy.complexity}
+- Language: ${internetData.searchResults.searchStrategy.language}
+- Region: ${internetData.searchResults.searchStrategy.region}`;
+        }
       }
       
       // Use adaptive language detection with enhanced instructions
@@ -130,6 +154,9 @@ ${userInput}
 10. End with language-appropriate "Allah knows best" equivalent for matters of interpretation
 11. ADAPTIVE: If user switches language mid-conversation, immediately adapt to their new preference
 12. LEARNING: Remember user's language preferences for future interactions
+13. INTEGRATION: If internet data is provided, use it to enhance your response with current information
+14. CITATION: When using internet data, cite sources appropriately
+15. AUTHENTICITY: Maintain Islamic authenticity and scholarly accuracy in all responses
 
 ## FINAL ADAPTIVE REMINDER
 You MUST respond in ${detectedLanguage}. This is an ADAPTIVE system that learns user preferences. 

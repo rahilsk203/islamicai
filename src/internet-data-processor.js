@@ -7,10 +7,12 @@
 import { WebSearch } from './web-search.js';
 import { LocationPrayerService } from './location-prayer-service.js';
 import { NewsIntegrationService } from './news-integration-service.js';
+import { AdvancedWebSearch } from './advanced-web-search.js'; // Add AdvancedWebSearch import
 
 export class InternetDataProcessor {
   constructor() {
     this.webSearch = new WebSearch();
+    this.advancedWebSearch = new AdvancedWebSearch(); // Initialize AdvancedWebSearch
     this.locationPrayerService = new LocationPrayerService();
     this.newsIntegrationService = new NewsIntegrationService();
     this.processingRules = {
@@ -29,7 +31,9 @@ export class InternetDataProcessor {
         'al_jazeera_news',
         'palestinian_news',
         'middle_east_news',
-        'muslim_world_news'
+        'muslim_world_news',
+        'gold_prices', // Add gold prices as a category that needs internet data
+        'current_prices' // Add general current prices
       ],
       
       // Rules for data validation
@@ -66,8 +70,30 @@ export class InternetDataProcessor {
         }
       }
       
-      // Check if query needs internet search
-      const searchDecision = this.webSearch.needsInternetSearch(userMessage);
+      // Check if query needs internet search using advanced analysis
+      const advancedSearchDecision = this.advancedWebSearch.needsInternetSearch(userMessage);
+      const regularSearchDecision = this.webSearch.needsInternetSearch(userMessage);
+      
+      // Use advanced search decision for more intelligent processing
+      const searchDecision = {
+        needsSearch: advancedSearchDecision.needsSearch || regularSearchDecision.needsSearch,
+        reason: advancedSearchDecision.needsSearch ? advancedSearchDecision.reason : regularSearchDecision.reason,
+        priority: advancedSearchDecision.priority || regularSearchDecision.priority,
+        context: advancedSearchDecision.context
+      };
+      
+      // Additional check for financial/price queries that might be missed
+      const lowerQuery = userMessage.toLowerCase();
+      const priceKeywords = ['gold price', 'silver price', 'gold rate', 'silver rate', 'metal price', 'commodity price', 'dam hai', 'kaya dam', 'price kya'];
+      const hasPriceQuery = priceKeywords.some(keyword => lowerQuery.includes(keyword));
+      
+      if (hasPriceQuery && !searchDecision.needsSearch) {
+        // Override the decision for price-related queries
+        searchDecision.needsSearch = true;
+        searchDecision.reason = 'price_query';
+        searchDecision.priority = 'high';
+        console.log('Overriding search decision for price query');
+      }
       
       // Check if query is about prayer times and we have user IP
       const isPrayerTimeQuery = this.isPrayerTimeQuery(userMessage);
@@ -87,12 +113,27 @@ export class InternetDataProcessor {
 
       console.log(`Query needs internet search: ${searchDecision.reason}`);
       
-      // Perform search
-      const searchResults = await this.webSearch.search(userMessage, {
-        maxResults: 5,
-        includeIslamicSources: this.processingRules.requireIslamicSources,
-        searchEngines: ['duckduckgo'] // Start with free engine
-      });
+      // Use advanced web search for more intelligent queries
+      let searchResults;
+      if (searchDecision.priority === 'high' || (advancedSearchDecision.needsSearch && advancedSearchDecision.priority !== 'low')) {
+        console.log('Using advanced web search for high-priority query');
+        searchResults = await this.advancedWebSearch.search(userMessage, {
+          maxResults: 10,
+          includeIslamicSources: true,
+          searchEngines: ['duckduckgo', 'google', 'bing', 'brave'], // Use more search engines
+          timeout: 15000,
+          language: context.language || 'en',
+          region: context.region || 'us'
+        });
+      } else {
+        // Fall back to regular web search for lower priority queries
+        console.log('Using regular web search');
+        searchResults = await this.webSearch.search(userMessage, {
+          maxResults: 5,
+          includeIslamicSources: this.processingRules.requireIslamicSources,
+          searchEngines: ['duckduckgo'] // Start with free engine
+        });
+      }
 
       if (!searchResults.success || !searchResults.results.length) {
         console.log('No internet data found, falling back to training data');
@@ -104,16 +145,18 @@ export class InternetDataProcessor {
         };
       }
 
-      // Check if we have intelligent search results
-      if (searchResults.intelligent) {
-        console.log('Using intelligent search results');
-      }
-
       // Process and validate the data
       const processedData = await this.processSearchResults(searchResults, userMessage);
       
-      // Create enhanced prompt with internet data
-      const enhancedPrompt = this.createEnhancedPrompt(processedData, userMessage, context, searchResults);
+      // Create enhanced prompt with internet data using appropriate formatting
+      let enhancedPrompt;
+      if (searchResults.fromCache !== undefined) {
+        // Advanced search results
+        enhancedPrompt = this.advancedWebSearch.formatForAI(searchResults, userMessage);
+      } else {
+        // Regular search results
+        enhancedPrompt = this.webSearch.formatForAI(searchResults, userMessage);
+      }
       
       return {
         needsInternetData: true,
@@ -259,8 +302,15 @@ export class InternetDataProcessor {
     // Assess data quality
     processedData.dataQuality = this.assessDataQuality(processedData.results);
 
-    // Extract key information
-    const keyInfo = this.webSearch.extractKeyInformation(searchResults, userMessage);
+    // Extract key information using appropriate method
+    let keyInfo;
+    if (searchResults.queryAnalysis) {
+      // Advanced search results have more detailed analysis
+      keyInfo = this.advancedWebSearch.extractKeyInformation(searchResults, userMessage);
+    } else {
+      // Regular search results
+      keyInfo = this.webSearch.extractKeyInformation(searchResults, userMessage);
+    }
     processedData.keyFacts = keyInfo.keyFacts || processedData.keyFacts;
 
     return processedData;
@@ -520,6 +570,12 @@ export class InternetDataProcessor {
       return enhancedPrompt;
     }
 
+    // Check if this is from advanced search
+    if (searchResults && searchResults.fromCache !== undefined) {
+      // Use advanced search formatting
+      return this.advancedWebSearch.formatForAI(searchResults, userMessage);
+    }
+
     enhancedPrompt += `\n## Real-Time Information Integration\n\n`;
     enhancedPrompt += `**Query:** ${userMessage}\n`;
     enhancedPrompt += `**Data Retrieved:** ${processedData.timestamp}\n`;
@@ -532,6 +588,11 @@ export class InternetDataProcessor {
       enhancedPrompt += `**Note:** Using intelligent search results based on query analysis\n`;
     }
     
+    // Add search strategy if available (from advanced search)
+    if (searchResults && searchResults.searchStrategy) {
+      enhancedPrompt += `**Search Strategy:** ${JSON.stringify(searchResults.searchStrategy)}\n`;
+    }
+    
     enhancedPrompt += `\n`;
 
     // Add key facts
@@ -541,6 +602,10 @@ export class InternetDataProcessor {
         enhancedPrompt += `${index + 1}. **${fact.type.toUpperCase()}:** ${fact.value}\n`;
         if (fact.context) {
           enhancedPrompt += `   Context: ${fact.context}\n`;
+        }
+        // Add score if available (from advanced search)
+        if (fact.score) {
+          enhancedPrompt += `   Relevance Score: ${(fact.score * 100).toFixed(1)}%\n`;
         }
       });
       enhancedPrompt += `\n`;
@@ -553,6 +618,11 @@ export class InternetDataProcessor {
       enhancedPrompt += `Source: ${result.source}\n`;
       enhancedPrompt += `Type: ${result.type}\n`;
       enhancedPrompt += `Content: ${result.content}\n`;
+      
+      // Add relevance score if available (from advanced search)
+      if (result.score) {
+        enhancedPrompt += `Relevance Score: ${(result.score * 100).toFixed(1)}%\n`;
+      }
       
       if (result.islamicContext) {
         const contextItems = Object.entries(result.islamicContext)
