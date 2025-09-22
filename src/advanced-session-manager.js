@@ -1,17 +1,29 @@
 import { IntelligentMemory } from './intelligent-memory.js';
 import { PerformanceOptimizer } from './performance-optimizer.js';
+import { UltraAdvancedSessionMemory } from './ultra-session-memory.js';
 
 export class AdvancedSessionManager {
   constructor(kvNamespace) {
     this.kv = kvNamespace;
-    this.maxHistoryLength = 50; // Increased for better context
+    this.maxHistoryLength = 50;
     this.maxMemoryItems = 100;
     this.memory = new IntelligentMemory();
     this.performanceOptimizer = new PerformanceOptimizer();
+    
+    // 🧠 Ultra-Advanced Session Memory System
+    this.ultraMemory = new UltraAdvancedSessionMemory(this.performanceOptimizer);
+    this.selfLearningEnabled = true;
+    
+    console.log('🚀 Advanced Session Manager initialized with Ultra-Memory, Self-Learning & Enhanced Chat History');
   }
 
   async getSessionData(sessionId) {
     try {
+      // ⚡ Initialize ultra-advanced session memory
+      if (this.selfLearningEnabled) {
+        await this.ultraMemory.initializeSession(sessionId);
+      }
+      
       // ⚡ Try DSA-optimized session cache first (O(1) lookup)
       const cachedSession = await this.performanceOptimizer.getCachedSession(sessionId);
       if (cachedSession) {
@@ -126,6 +138,16 @@ export class AdvancedSessionManager {
 
   async processMessage(sessionId, userMessage, aiResponse) {
     const startTime = Date.now();
+    
+    // 🧠 Ultra-Advanced Learning Processing with enhanced chat history
+    if (this.selfLearningEnabled) {
+      const learningResult = await this.ultraMemory.processMessageWithLearning(
+        sessionId, userMessage, aiResponse
+      );
+      console.log(`🧠 Learning insights: Intelligence gain ${learningResult.intelligenceGain.toFixed(1)}%`);
+      console.log(`💾 Chat history updated: ${learningResult.chatHistoryUpdated}`);
+      console.log(`📊 Contextual improvements: ${learningResult.contextualImprovements.toFixed(1)}%`);
+    }
     
     // ⚡ Apply DSA-based message preprocessing
     const preprocessedData = await this.performanceOptimizer.preprocessMessage(
@@ -368,6 +390,20 @@ export class AdvancedSessionManager {
   async getContextualPrompt(sessionId, userMessage) {
     const startTime = Date.now();
     
+    // 🧠 Try ultra-advanced contextual prompt with enhanced chat history learning
+    if (this.selfLearningEnabled) {
+      try {
+        const ultraPrompt = await this.ultraMemory.getOptimizedContextualPrompt(sessionId, userMessage);
+        if (ultraPrompt && ultraPrompt.prompt) {
+          console.log(`🧠 Ultra-advanced prompt with ${ultraPrompt.learningInsights} insights & ${ultraPrompt.chatHistoryItems} history items`);
+          console.log(`📊 Context accuracy: ${(ultraPrompt.contextualAccuracy * 100).toFixed(1)}%`);
+          return ultraPrompt.prompt;
+        }
+      } catch (error) {
+        console.warn('⚠️ Ultra-memory fallback, using standard prompt:', error.message);
+      }
+    }
+    
     // ⚡ Try DSA-optimized contextual prompt cache first
     const cachedPrompt = await this.performanceOptimizer.getCachedContextualPrompt(
       sessionId, 
@@ -521,11 +557,68 @@ export class AdvancedSessionManager {
   }
   
   /**
-   * Get performance optimizer statistics
-   * @returns {Object} Performance statistics
+   * 🧠 Get ultra-advanced session analytics with learning insights
+   * @param {string} sessionId - Session identifier
+   * @returns {Object} Comprehensive analytics with learning data
    */
-  getPerformanceStats() {
-    return this.performanceOptimizer.getMetrics();
+  async getUltraSessionAnalytics(sessionId) {
+    if (!this.selfLearningEnabled) {
+      return { error: 'Self-learning not enabled' };
+    }
+    
+    try {
+      const analytics = await this.ultraMemory.getSessionAnalytics(sessionId);
+      const performanceStats = this.getPerformanceStats();
+      
+      return {
+        ...analytics,
+        systemPerformance: performanceStats,
+        ultraFeaturesEnabled: true,
+        selfLearningActive: true,
+        generatedAt: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Error getting ultra analytics:', error);
+      return { error: error.message };
+    }
+  }
+  
+  /**
+   * 📊 Get learning progress for a session
+   * @param {string} sessionId - Session identifier
+   * @returns {Object} Learning progress data
+   */
+  async getLearningProgress(sessionId) {
+    if (!this.selfLearningEnabled) {
+      return { learningEnabled: false };
+    }
+    
+    try {
+      const insights = await this.ultraMemory.learningEngine.getLearningInsights(sessionId);
+      const progress = await this.ultraMemory.learningEngine.getLearningProgress(sessionId);
+      
+      return {
+        learningEnabled: true,
+        totalInsights: insights.totalInsights,
+        intelligenceGain: insights.intelligenceGain,
+        progressPercentage: progress,
+        learningRate: insights.learningRate,
+        sessionOptimized: true
+      };
+    } catch (error) {
+      console.error('Error getting learning progress:', error);
+      return { error: error.message };
+    }
+  }
+  
+  /**
+   * 🎯 Toggle self-learning system
+   * @param {boolean} enabled - Enable/disable self-learning
+   */
+  toggleSelfLearning(enabled) {
+    this.selfLearningEnabled = enabled;
+    console.log(`🧠 Self-learning system ${enabled ? 'enabled' : 'disabled'}`);
+    return { selfLearningEnabled: this.selfLearningEnabled };
   }
   
   /**
