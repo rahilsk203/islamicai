@@ -15,6 +15,8 @@ export class InternetDataProcessor {
     this.advancedWebSearch = new AdvancedWebSearch(); // Initialize AdvancedWebSearch
     this.locationPrayerService = new LocationPrayerService();
     this.newsIntegrationService = new NewsIntegrationService();
+    
+    // Performance optimized processing rules
     this.processingRules = {
       // Rules for when to use internet data
       useInternetFor: [
@@ -32,32 +34,92 @@ export class InternetDataProcessor {
         'palestinian_news',
         'middle_east_news',
         'muslim_world_news',
-        'gold_prices', // Add gold prices as a category that needs internet data
-        'current_prices', // Add general current prices
-        'quran_verses', // Add Quran verses
-        'hadith_references', // Add Hadith references
-        'fiqh_guidance', // Add Fiqh guidance
-        'historical_events' // Add historical events
+        'gold_prices',
+        'current_prices',
+        'quran_verses',
+        'hadith_references',
+        'fiqh_guidance',
+        'historical_events'
       ],
       
-      // Rules for data validation
-      validateData: true,
-      requireIslamicSources: false, // Can use general sources for current info
-      maxDataAge: 24 * 60 * 60 * 1000, // 24 hours
+      // Performance optimized settings
+      validateData: false, // Disabled for faster processing
+      requireIslamicSources: false,
+      maxDataAge: 6 * 60 * 60 * 1000, // Reduced to 6 hours for fresher data
       
-      // Response integration rules
+      // Response integration rules - optimized for speed
       integrateWithResponse: true,
-      addSourceAttribution: true,
-      addTimestamp: true,
-      addDisclaimer: true,
-      includeAlJazeeraNews: true, // Enable Al Jazeera news integration
+      addSourceAttribution: false, // Disabled for faster processing
+      addTimestamp: false, // Disabled for faster processing
+      addDisclaimer: false,
+      includeAlJazeeraNews: false, // Disabled for faster processing
       
-      // Enhanced processing rules
-      enableSemanticSearch: true, // Enable semantic search
-      enableAISearch: true, // Enable AI-powered search
-      maxSearchResults: 15, // Increase max search results
-      searchTimeout: 20000 // Increase search timeout
+      // Enhanced processing rules - optimized for performance
+      enableSemanticSearch: false,
+      enableAISearch: false,
+      maxSearchResults: 3, // Reduced from 8 for faster results
+      searchTimeout: 3000, // Reduced from 8000 for faster timeout
+      cacheTTL: 15 * 60 * 1000 // 15 minutes cache for frequently requested data
     };
+    
+    // Simple in-memory cache for frequently requested data
+    this.dataCache = new Map();
+    this.cacheTimestamps = new Map();
+  }
+
+  /**
+   * Check cache for existing data
+   * @param {string} query - Search query
+   * @returns {Object|null} Cached data or null
+   */
+  checkCache(query) {
+    const cacheKey = this.generateCacheKey(query);
+    if (this.dataCache.has(cacheKey)) {
+      const timestamp = this.cacheTimestamps.get(cacheKey);
+      if (Date.now() - timestamp < this.processingRules.cacheTTL) {
+        console.log('Cache hit for query:', query);
+        return this.dataCache.get(cacheKey);
+      } else {
+        // Expired cache, remove it
+        this.dataCache.delete(cacheKey);
+        this.cacheTimestamps.delete(cacheKey);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Store data in cache
+   * @param {string} query - Search query
+   * @param {Object} data - Data to cache
+   */
+  storeInCache(query, data) {
+    const cacheKey = this.generateCacheKey(query);
+    this.dataCache.set(cacheKey, data);
+    this.cacheTimestamps.set(cacheKey, Date.now());
+    
+    // Limit cache size
+    if (this.dataCache.size > 100) {
+      const firstKey = this.dataCache.keys().next().value;
+      this.dataCache.delete(firstKey);
+      this.cacheTimestamps.delete(firstKey);
+    }
+  }
+
+  /**
+   * Generate cache key for query
+   * @param {string} query - Search query
+   * @returns {string} Cache key
+   */
+  generateCacheKey(query) {
+    // Simple hash function for cache key
+    let hash = 0;
+    for (let i = 0; i < query.length; i++) {
+      const char = query.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return `cache_${Math.abs(hash)}`;
   }
 
   /**
@@ -71,12 +133,20 @@ export class InternetDataProcessor {
     try {
       console.log('Processing query for internet data needs:', userMessage);
       
+      // Check cache first for performance
+      const cachedResult = this.checkCache(userMessage);
+      if (cachedResult) {
+        return cachedResult;
+      }
+      
       // Check if query needs Al Jazeera news integration first
       if (this.processingRules.includeAlJazeeraNews) {
         const newsDecision = this.newsIntegrationService.shouldIntegrateNews(userMessage);
         if (newsDecision.needsNews) {
           console.log('Query needs Al Jazeera news integration:', newsDecision.reason);
-          return await this.processAlJazeeraNewsIntegration(userMessage, context, userIP);
+          const result = await this.processAlJazeeraNewsIntegration(userMessage, context, userIP);
+          this.storeInCache(userMessage, result); // Cache the result
+          return result;
         }
       }
       
@@ -117,28 +187,32 @@ export class InternetDataProcessor {
       const isPrayerTimeQuery = this.isPrayerTimeQuery(userMessage);
       if (isPrayerTimeQuery && userIP) {
         console.log('Detected prayer time query with user IP, getting location-based prayer times');
-        return await this.processLocationBasedPrayerTimes(userMessage, userIP, context);
+        const result = await this.processLocationBasedPrayerTimes(userMessage, userIP, context);
+        this.storeInCache(userMessage, result); // Cache the result
+        return result;
       }
       
       if (!searchDecision.needsSearch) {
-        return {
+        const result = {
           needsInternetData: false,
           reason: searchDecision.reason,
           data: null,
           enhancedPrompt: ''
         };
+        this.storeInCache(userMessage, result); // Cache the result
+        return result;
       }
 
       console.log(`Query needs internet search: ${searchDecision.reason}`);
       
-      // Use advanced web search for more intelligent queries with enhanced options
+      // Use advanced web search for more intelligent queries with optimized options
       let searchResults;
       if (searchDecision.priority === 'high' || (advancedSearchDecision.needsSearch && advancedSearchDecision.priority !== 'low')) {
-        console.log('Using advanced web search for high-priority query');
+        console.log('Using advanced web search for high-priority query with optimized settings');
         searchResults = await this.advancedWebSearch.search(userMessage, {
           maxResults: this.processingRules.maxSearchResults,
           includeIslamicSources: true,
-          searchEngines: ['duckduckgo', 'google', 'bing', 'brave', 'perplexity', 'exa'], // Use more search engines
+          searchEngines: ['duckduckgo'], // Single engine for speed
           timeout: this.processingRules.searchTimeout,
           language: context.language || 'en',
           region: context.region || 'us',
@@ -147,22 +221,25 @@ export class InternetDataProcessor {
         });
       } else {
         // Fall back to regular web search for lower priority queries
-        console.log('Using regular web search');
+        console.log('Using regular web search with optimized settings');
         searchResults = await this.webSearch.search(userMessage, {
-          maxResults: 5,
+          maxResults: 3, // Reduced for speed
           includeIslamicSources: this.processingRules.requireIslamicSources,
-          searchEngines: ['duckduckgo'] // Start with free engine
+          searchEngines: ['duckduckgo'], // Single engine for speed
+          timeout: 2000 // Further reduced timeout
         });
       }
 
       if (!searchResults.success || !searchResults.results.length) {
         console.log('No internet data found, falling back to training data');
-        return {
+        const result = {
           needsInternetData: false,
           reason: 'no_data_found',
           data: null,
           enhancedPrompt: ''
         };
+        this.storeInCache(userMessage, result); // Cache the result
+        return result;
       }
 
       // Process and validate the data
@@ -178,23 +255,30 @@ export class InternetDataProcessor {
         enhancedPrompt = this.webSearch.formatForAI(searchResults, userMessage);
       }
       
-      return {
+      const result = {
         needsInternetData: true,
         reason: searchDecision.reason,
         data: processedData,
         enhancedPrompt: enhancedPrompt,
         searchResults: searchResults
       };
+      
+      // Cache the result for performance
+      this.storeInCache(userMessage, result);
+      
+      return result;
 
     } catch (error) {
       console.error('Internet data processing error:', error);
-      return {
+      const result = {
         needsInternetData: false,
         reason: 'processing_error',
         error: error.message,
         data: null,
         enhancedPrompt: ''
       };
+      this.storeInCache(userMessage, result); // Cache the result
+      return result;
     }
   }
 

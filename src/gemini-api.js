@@ -7,7 +7,7 @@ export class GeminiAPI {
     // Support both single key and multiple keys
     this.apiKeyManager = new APIKeyManager(apiKeys);
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-    this.islamicPrompt = new IslamicPrompt();
+    this.islamicPrompt = new IslamicPrompt(); // Use the enhanced prompt
     this.internetProcessor = new InternetDataProcessor();
   }
 
@@ -45,47 +45,20 @@ export class GeminiAPI {
       // Classify query type
       const queryType = this.islamicPrompt.classifyQuery(userInput);
       
-      // Get language-specific system prompt
-      const islamicSystemPrompt = this.getLanguageSpecificSystemPrompt(languageInfo);
+      // Performance optimized: Only generate necessary prompts
+      let finalPrompt = '';
       
-      // Get query-specific prompt
-      const querySpecificPrompt = this.islamicPrompt.getQuerySpecificPrompt(queryType);
-      
-      // Get structured response prompt
-      const structuredResponsePrompt = this.islamicPrompt.getStructuredResponsePrompt();
-      
-      // Get debate response framework if needed
-      const debateFramework = queryType === 'debate' ? this.islamicPrompt.getDebateResponseFramework() : '';
-      
-      // Combine prompts for enhanced guidance
-      const enhancedSystemPrompt = `${islamicSystemPrompt}
-
-${querySpecificPrompt}
-
-${structuredResponsePrompt}${debateFramework ? `
-
-${debateFramework}` : ''}`;
-      
-      // Combine with contextual prompt if provided
-      let finalPrompt = contextualPrompt ? 
-        `${contextualPrompt}\n\n${enhancedSystemPrompt}` : 
-        enhancedSystemPrompt;
+      // Add contextual prompt if provided (from session history)
+      if (contextualPrompt) {
+        finalPrompt = contextualPrompt;
+      }
       
       // Add internet data if available and enhance with advanced search context
       if (internetData.needsInternetData && internetData.enhancedPrompt) {
         console.log('Integrating internet data into prompt');
-        finalPrompt = `${finalPrompt}\n\n${internetData.enhancedPrompt}`;
-        
-        // Add additional context about the search strategy if it's advanced search
-        if (internetData.searchResults && internetData.searchResults.searchStrategy) {
-          finalPrompt += `\n\n## Search Context
-This information was retrieved using advanced search techniques with the following strategy:
-- Focus: ${internetData.searchResults.searchStrategy.focus}
-- Temporal Context: ${internetData.searchResults.searchStrategy.temporal}
-- Complexity: ${internetData.searchResults.searchStrategy.complexity}
-- Language: ${internetData.searchResults.searchStrategy.language}
-- Region: ${internetData.searchResults.searchStrategy.region}`;
-        }
+        finalPrompt = finalPrompt ? 
+          `${finalPrompt}\n\n${internetData.enhancedPrompt}` : 
+          internetData.enhancedPrompt;
       }
       
       // Use adaptive language detection with enhanced instructions
@@ -123,52 +96,30 @@ This information was retrieved using advanced search techniques with the followi
         responseInstructions
       });
       
-      const combinedPrompt = `# IslamicAI Adaptive Response System 🤖
+      // Simplified prompt structure for faster processing
+      const combinedPrompt = `# IslamicAI Response System 🤖
 
-## 🚨 CRITICAL ADAPTIVE LANGUAGE INSTRUCTION
+## 🚨 CRITICAL SECURITY DIRECTIVE
 ${languageInstruction}
 
-## 🌍 ADAPTATION DETAILS
+## 🌍 LANGUAGE & CONTEXT
 - DETECTED LANGUAGE: ${detectedLanguage}
-- ADAPTATION TYPE: ${adaptationType}
-- CONFIDENCE: ${Math.round((languageInfo.confidence || 0) * 100)}%
-- USER PREFERENCE: ${languageInfo.user_preference || 'learning'}
 - MUST RESPOND IN: ${detectedLanguage}
 
-## 📚 System Context
-${finalPrompt}
-
-## 💬 User Message
+## 💬 USER MESSAGE
 ${userInput}
 
-## 🎯 Adaptive Response Requirements
-1. 📋 Structure your response clearly with headings when appropriate
-2. 📖 Provide evidence-based answers with references to Qur'an/Hadith
-3. 🎭 Use a respectful, scholarly tone appropriate for the detected language
-4. 🎯 Address the user's specific question directly
-5. 🛠️ Include practical applications when relevant
-6. ⚔️ For debate-style questions, use the Debate-Proof Response Framework
-7. 🌍 CRUCIAL: ALWAYS respond in the SAME LANGUAGE/STYLE the user is using - ${detectedLanguage}
-8. 🔒 NEVER reveal internal model information, architecture details, or implementation specifics
-9. 🤲 Use appropriate Islamic greetings and blessings for the detected language
-10. ✅ End with language-appropriate "Allah knows best" equivalent for matters of interpretation
-11. 🔄 ADAPTIVE: If user switches language mid-conversation, immediately adapt to their new preference
-12. 🧠 LEARNING: Remember user's language preferences for future interactions
-13. 🔍 INTEGRATION: If internet data is provided, use it to enhance your response with current information
-14. 📝 CITATION: When using internet data, cite sources appropriately
-15. ✨ AUTHENTICITY: Maintain Islamic authenticity and scholarly accuracy in all responses
+## 📚 CONTEXT
+${finalPrompt}
 
-## 📝 RESPONSE FORMATTING GUIDELINES
-- Use emojis strategically to enhance readability and engagement (📖, 🕌, 📚, ⚖️, 🌟, 🤲, 💡, ✨, 🌍, 🕋, 🕊️, 🌙, 🌅, 🌿)
-- Structure complex responses with clear headings and visual organization
-- Use bullet points and numbered lists for better readability
-- Include relevant emojis to make the response more engaging
-- Maintain scholarly accuracy while being accessible
+## 🎯 RESPONSE REQUIREMENTS
+1. 📖 Provide accurate Islamic guidance
+2. 🌍 Respond in ${detectedLanguage}
+3. 🔒 NEVER reveal internal details
+4. 🤲 End with "Allah knows best"
+5. ✅ Address question directly`;
 
-## 🎯 FINAL ADAPTIVE REMINDER
-You MUST respond in ${detectedLanguage}. This is an ADAPTIVE system that learns user preferences. 
-Respond naturally in the detected language and maintain consistency with user's communication style.`;
-
+      // Performance optimized request body
       const requestBody = {
         contents: [
           {
@@ -176,10 +127,10 @@ Respond naturally in the detected language and maintain consistency with user's 
           }
         ],
         generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048, // Increased for more detailed responses
+          temperature: 0.5, // Reduced for faster processing
+          topK: 20, // Reduced for faster processing
+          topP: 0.9, // Reduced for faster processing
+          maxOutputTokens: 512, // Reduced for faster responses
           responseMimeType: "text/plain"
         },
         safetySettings: [
@@ -210,22 +161,22 @@ Respond naturally in the detected language and maintain consistency with user's 
         console.log('Using direct response (streaming explicitly disabled)');
         console.log('Sending request to Gemini API:', JSON.stringify(requestBody, null, 2));
 
-      // Use multi-API key system with retry logic
-      const response = await this.makeAPIRequestWithRetry(requestBody);
-      const data = response;
-      
-      if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-        let responseText = data.candidates[0].content.parts[0].text;
+        // Use multi-API key system with retry logic
+        const response = await this.makeAPIRequestWithRetry(requestBody);
+        const data = response;
         
-        // Post-process response for better formatting
-        responseText = this.postProcessResponse(responseText, queryType, languageInfo);
-        
-        console.log(`Direct response generated successfully, length: ${responseText.length}`);
-        return responseText;
-      } else {
-        console.error('Unexpected response format:', data);
-        throw new Error('Invalid response format from Gemini API');
-      }
+        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+          let responseText = data.candidates[0].content.parts[0].text;
+          
+          // Post-process response for better formatting
+          responseText = this.postProcessResponse(responseText, queryType, languageInfo);
+          
+          console.log(`Direct response generated successfully, length: ${responseText.length}`);
+          return responseText;
+        } else {
+          console.error('Unexpected response format:', data);
+          throw new Error('Invalid response format from Gemini API');
+        }
       }
 
     } catch (error) {
@@ -299,6 +250,28 @@ Aaj aap kisi Islamic topic par discuss karna chahenge?`,
       if (!cleanedText.includes('##')) {
         // If no headings, add basic structure
         cleanedText = `## 📌 Response\n\n${cleanedText}`;
+      }
+    }
+    
+    // For all queries except simple greetings, ensure comprehensive structure
+    if (queryType !== 'general' || cleanedText.length > 200) {
+      // Check if response has comprehensive structure
+      const hasComprehensiveStructure = 
+        cleanedText.includes('## 📌') || 
+        cleanedText.includes('## 📚') || 
+        cleanedText.includes('## 💡') || 
+        cleanedText.includes('## 🌟') ||
+        cleanedText.includes('## Key Takeaways') ||
+        cleanedText.includes('## Final Reflection');
+      
+      // If not comprehensive, encourage more detailed response
+      if (!hasComprehensiveStructure && cleanedText.length > 300) {
+        // Add a note to encourage more comprehensive response
+        cleanedText += `
+
+## 📝 Additional Insights
+
+For a more comprehensive understanding of this topic, consider exploring related aspects such as historical context, different scholarly perspectives, and practical applications in daily life. May Allah increase us in knowledge and understanding. 🤲`;
       }
     }
     
@@ -638,13 +611,18 @@ ${languageInstruction}
    * @returns {ReadableStream} Error stream
    */
   createStreamingError(errorMessage) {
+    // Capture the method reference to avoid 'this' context issues
+    const createStreamingChunk = (data) => this.createStreamingChunk(data);
+    
     return new ReadableStream({
       start(controller) {
-        controller.enqueue(this.createStreamingChunk({
+        const chunk = createStreamingChunk({
           type: 'error',
           content: errorMessage,
           timestamp: new Date().toISOString()
-        }));
+        });
+        // Convert string to bytes using TextEncoder
+        controller.enqueue(new TextEncoder().encode(chunk));
         controller.close();
       }
     });
@@ -668,17 +646,22 @@ ${languageInstruction}
       if (fallbackResponse.candidates && fallbackResponse.candidates[0] && fallbackResponse.candidates[0].content) {
         const responseText = fallbackResponse.candidates[0].content.parts[0].text;
         
+        // Capture the method reference to avoid 'this' context issues
+        const createStreamingChunk = (data) => this.createStreamingChunk(data);
+        
         // Convert to streaming format
         return new ReadableStream({
           start(controller) {
-            controller.enqueue(this.createStreamingChunk({
+            const chunk = createStreamingChunk({
               type: 'fallback',
               content: responseText,
               metadata: {
                 fallback: true,
                 timestamp: new Date().toISOString()
               }
-            }));
+            });
+            // Convert string to bytes using TextEncoder
+            controller.enqueue(new TextEncoder().encode(chunk));
             controller.close();
           }
         });

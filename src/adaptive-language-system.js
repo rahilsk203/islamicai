@@ -3,11 +3,9 @@
 
 export class AdaptiveLanguageSystem {
   constructor() {
-    // DSA: Optimized data structures for language adaptation
-    this.userPreferences = new Map(); // O(1) access for user language preferences
-    this.languagePatterns = new Map(); // Pattern recognition cache
-    this.switchCommands = new Map(); // Language switch command detection
-    this.contextMemory = new Map(); // Context-aware language persistence
+    // Simplified data structures for faster language adaptation
+    this.userPreferences = new Map();
+    this.contextMemory = new Map();
     
     // Language detection patterns with optimized scoring
     this.languagePatterns = {
@@ -20,7 +18,10 @@ export class AdaptiveLanguageSystem {
           /(?:assalamu alaikum|salam|insha allah|mashallah|subhanallah|alhamdulillah)/gi,
           /(?:bhai|sister|brother|aap|tum|main|mera|mujhe)\s+[a-zA-Z]+/gi,
           /(?:current|time|waqt|samay|abhi|now)\s+(?:time|waqt|samay|kya|hai)/gi,
-          /(?:kya|kyun|kahan|kab|kaise|kitna|kitni|kitne)\s+(?:time|waqt|samay)/gi
+          /(?:kya|kyun|kahan|kab|kaise|kitna|kitni|kitne)\s+(?:time|waqt|samay)/gi,
+          /(?:hoon|ho|hai|hain|hun|kar|karo|kare|karna|karte|karta|karti|kari)/gi,
+          /(?:kya|kyun|kahan|kab|kaise|kitna|kitni|kitne|kis|kisi|kuch|kuchh)/gi,
+          /(?:hoon|hai|hoon|kar|karo|kare|karna|karte|karta|karti|kari|liye|se|mein|par)/gi
         ],
         keywords: [
           'main', 'aap', 'tum', 'ham', 'ye', 'wo', 'kar', 'raha', 'hun', 'hain', 'hai',
@@ -29,9 +30,13 @@ export class AdaptiveLanguageSystem {
           'tuu', 'kasa', 'kon', 'kaya', 'saktaa', 'sakte', 'sakti', 'sakta', 'hoon', 'ho',
           'hoi', 'hoa', 'hoiye', 'hoja', 'hojao', 'hojaye', 'kya', 'kyun', 'kahan', 'kab',
           'kaise', 'kitna', 'kitni', 'kitne', 'bhai', 'sister', 'brother', 'time', 'waqt',
-          'samay', 'current', 'now', 'abhi', 'time', 'waqt', 'samay'
+          'samay', 'current', 'now', 'abhi', 'time', 'waqt', 'samay', 'hoon', 'ho', 'hun',
+          'hain', 'hai', 'karo', 'kare', 'karna', 'karte', 'karta', 'karti', 'kari', 'liye',
+          'se', 'mein', 'par', 'kis', 'kisi', 'kuch', 'kuchh', 'assalamu', 'alaikum', 'salam',
+          'islamic', 'quran', 'hadith', 'tafseer', 'fiqh', 'seerah', 'dua', 'namaz', 'roza',
+          'zakat', 'hajj', 'masjid', 'imam', 'allah', 'muhammad', 'prophet', 'islam'
         ],
-        weight: 3.0,
+        weight: 3.5, // Increased weight for better detection
         script: 'mixed'
       },
       
@@ -129,10 +134,9 @@ export class AdaptiveLanguageSystem {
     // DSA: Priority queue for language adaptation decisions
     this.adaptationQueue = this.createPriorityQueue();
     
-    // Learning parameters
-    this.learningRate = 0.1;
-    this.confidenceThreshold = 0.7;
-    this.minSamplesForLearning = 3;
+    // Simplified learning parameters for faster processing
+    this.confidenceThreshold = 0.5;
+    this.minSamplesForLearning = 1;
   }
 
   /**
@@ -190,18 +194,18 @@ export class AdaptiveLanguageSystem {
   }
 
   /**
-   * Main adaptation method - analyzes user input and determines response language
+   * Simplified adaptation method for faster processing
    * @param {string} userMessage - User's message
    * @param {string} sessionId - Session identifier
    * @param {Object} context - Additional context
    * @returns {Object} Language adaptation result
    */
   adaptLanguage(userMessage, sessionId, context = {}) {
-    // DSA: Check cache first for O(1) access
+    // Quick cache check
     const cacheKey = `${sessionId}_${userMessage.length}`;
     if (this.preferenceCache.has(cacheKey)) {
       const cached = this.preferenceCache.get(cacheKey);
-      if (Date.now() - cached.timestamp < 300000) { // 5 minutes cache
+      if (Date.now() - cached.timestamp < 60000) { // 1 minute cache
         return cached.result;
       }
     }
@@ -223,19 +227,20 @@ export class AdaptiveLanguageSystem {
       return result;
     }
 
-    // Analyze user's language style
+    // Simplified language analysis
     const languageAnalysis = this.analyzeLanguageStyle(userMessage);
     
     // Get user's historical preferences
     const userPreference = this.getUserPreference(sessionId);
     
-    // Apply adaptive learning
-    const adaptationResult = this.applyAdaptiveLearning(
-      languageAnalysis, 
-      userPreference, 
-      sessionId, 
-      context
-    );
+    // Simplified adaptation logic
+    const adaptationResult = {
+      detectedLanguage: languageAnalysis.language,
+      confidence: languageAnalysis.confidence,
+      adaptationType: 'quick_detection',
+      shouldAdapt: languageAnalysis.confidence > 0.3,
+      userPreference: languageAnalysis.language
+    };
 
     // Cache the result
     this.cacheResult(cacheKey, adaptationResult);
@@ -267,60 +272,42 @@ export class AdaptiveLanguageSystem {
   }
 
   /**
-   * Analyze user's language style using optimized pattern matching
+   * Simplified language analysis for faster processing
    * @param {string} message - User message
    * @returns {Object} Language analysis result
    */
   analyzeLanguageStyle(message) {
-    const scores = {};
     const totalChars = message.length;
     
     if (totalChars === 0) {
-      return { language: 'english', confidence: 0, scores: {} };
+      return { language: 'english', confidence: 0 };
     }
 
-    // Calculate scores for each language using optimized patterns
-    for (const [language, config] of Object.entries(this.languagePatterns)) {
-      let score = 0;
-      let matches = 0;
-
-      // Pattern matching with optimized regex
-      for (const pattern of config.patterns) {
-        const patternMatches = message.match(pattern) || [];
-        matches += patternMatches.length;
-        score += (patternMatches.length * config.weight) / totalChars;
-      }
-
-      // Keyword matching
-      const keywordMatches = config.keywords.filter(keyword => 
-        message.toLowerCase().includes(keyword.toLowerCase())
-      ).length;
-      score += (keywordMatches * config.weight * 2) / totalChars;
-
-      scores[language] = {
-        score: Math.min(score, 1),
-        matches,
-        keywordMatches,
-        script: config.script
-      };
-    }
+    // Simplified scoring for each language
+    const scores = {};
+    
+    // Quick Hinglish detection (highest priority)
+    const hinglishMatches = message.match(/(?:main|aap|tum|ham|ye|wo|kar|ke|ki|ka|mein|se|ko|par|aur|ya|lekin|kyunki|kya|kyun|kahan|kab|kaise|kitna|bhai|sister|brother|time|waqt|samay|current|now|abhi)/gi);
+    scores.hinglish = hinglishMatches ? (hinglishMatches.length * 2) / totalChars : 0;
+    
+    // Quick Hindi detection
+    const hindiMatches = message.match(/[ऀ-ॿ]+/g);
+    scores.hindi = hindiMatches ? hindiMatches.length / totalChars : 0;
+    
+    // Quick English detection
+    const englishMatches = message.match(/(?:the|and|is|are|was|were|have|has|had|will|would|can|could|should|may|might|this|that|these|those|what|when|where|why|how|who|which)/gi);
+    scores.english = englishMatches ? englishMatches.length / totalChars : 0.1;
 
     // Find the language with highest score
     const detectedLanguage = Object.keys(scores).reduce((a, b) => 
-      scores[a].score > scores[b].score ? a : b
+      scores[a] > scores[b] ? a : b
     );
 
-    const confidence = Math.min(scores[detectedLanguage].score * 100, 100);
+    const confidence = Math.min(scores[detectedLanguage] * 100, 100);
 
     return {
       language: detectedLanguage,
-      confidence: confidence / 100,
-      scores,
-      totalChars,
-      analysis: {
-        charDistribution: this.getCharDistribution(message),
-        scriptDetection: this.detectScripts(message)
-      }
+      confidence: confidence / 100
     };
   }
 
@@ -523,7 +510,7 @@ export class AdaptiveLanguageSystem {
       },
       
       hinglish: {
-        instruction: "RESPOND IN HINGLISH ONLY (Hindi + English mix). Use natural Hinglish that mixes Hindi and English words as commonly spoken. Use Roman script for Hindi words.",
+        instruction: "RESPOND IN HINGLISH ONLY (Hindi + English mix). Use natural Hinglish that mixes Hindi and English words as commonly spoken. Use Roman script for Hindi words. Maintain a friendly, conversational tone while being respectful and scholarly. Example: 'Assalamu Alaikum! Kaise ho aap? Main IslamicAI hoon, aapka Islamic Scholar AI assistant. Aapko Qur'an, Hadith, Tafseer, Fiqh, ya Seerah se related koi bhi madad chahiye toh batao. Main yahan hoon aapki help karne ke liye. Allah aapko khush rakhe! 🤲'",
         greeting: "Assalamu Alaikum!",
         ending: "Allah sabse behtar jaanta hai 🤲",
         style: "conversational"

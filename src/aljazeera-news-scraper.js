@@ -598,16 +598,6 @@ class NewsDatabase {
   async clearAll() {
     this.articles.clear();
     this.urlIndex.clear();
-  }
-
-  async getArticlesByRegion(region) {
-    const ids = this.regionIndex.get(region) || new Set();
-    return Array.from(ids).map(id => this.articles.get(id)).filter(Boolean);
-  }
-
-  async clearAll() {
-    this.articles.clear();
-    this.urlIndex.clear();
     this.categoryIndex.clear();
     this.regionIndex.clear();
     this.dateIndex.clear();

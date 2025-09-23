@@ -3,334 +3,70 @@ import { IntelligentMemory } from './intelligent-memory.js';
 export class AdvancedSessionManager {
   constructor(kvNamespace) {
     this.kv = kvNamespace;
-    this.maxHistoryLength = 50; // Increased for better context
-    this.maxMemoryItems = 100;
+    this.maxHistoryLength = 10; // Further reduced for better performance
+    this.maxMemoryItems = 20; // Further reduced for better performance
     this.memory = new IntelligentMemory();
     
-    // DSA: Enhanced data structures for session management
-    this.sessionCache = new Map(); // O(1) access for frequently used sessions
-    this.lruSessions = new Map(); // LRU cache for session eviction
-    this.cacheCapacity = 1000;
+    // Simplified session management for better performance
+    this.sessionCache = new Map();
+    this.cacheCapacity = 100; // Reduced cache capacity for memory efficiency
     
-    // DSA: Bloom Filter for quick session existence check
-    this.sessionBloomFilter = new Set();
-    
-    // DSA: Hash Map for O(1) session lookup
-    this.sessionHashMap = new Map();
+    // Performance tracking
+    this.performanceStats = {
+      cacheHits: 0,
+      cacheMisses: 0,
+      kvAccesses: 0,
+      bloomFilterHits: 0,
+      bloomFilterMisses: 0
+    };
   }
 
-  // DSA: LRU Cache Management for sessions
+  // Simplified cache management
   _manageSessionCache() {
     if (this.sessionCache.size > this.cacheCapacity) {
+      // Remove oldest entries
       const firstKey = this.sessionCache.keys().next().value;
       this.sessionCache.delete(firstKey);
     }
   }
 
-  // DSA: Bloom Filter implementation for session existence check
-  _addToBloomFilter(sessionId) {
-    // Simple implementation using multiple hash functions
-    const hashes = [
-      this._hash1(sessionId),
-      this._hash2(sessionId),
-      this._hash3(sessionId)
-    ];
-    
-    hashes.forEach(hash => this.sessionBloomFilter.add(hash));
-  }
-
-  _mightExistInBloomFilter(sessionId) {
-    const hashes = [
-      this._hash1(sessionId),
-      this._hash2(sessionId),
-      this._hash3(sessionId)
-    ];
-    
-    return hashes.every(hash => this.sessionBloomFilter.has(hash));
-  }
-
-  // Simple hash functions for Bloom Filter
-  _hash1(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 5) - hash + str.charCodeAt(i);
-      hash |= 0; // Convert to 32-bit integer
-    }
-    return Math.abs(hash);
-  }
-
-  _hash2(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 7) - hash + str.charCodeAt(i);
-      hash |= 0;
-    }
-    return Math.abs(hash);
-  }
-
-  _hash3(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 3) - hash + str.charCodeAt(i);
-      hash |= 0;
-    }
-    return Math.abs(hash);
-  }
-
-  // DSA: AVL Tree implementation for balanced session history
-  createAVLTree() {
-    class AVLNode {
-      constructor(data) {
-        this.data = data;
-        this.left = null;
-        this.right = null;
-        this.height = 1;
-      }
-    }
-
-    class AVLTree {
-      constructor() {
-        this.root = null;
-      }
-
-      getHeight(node) {
-        return node ? node.height : 0;
-      }
-
-      getBalance(node) {
-        return node ? this.getHeight(node.left) - this.getHeight(node.right) : 0;
-      }
-
-      rotateRight(y) {
-        const x = y.left;
-        const T2 = x.right;
-
-        x.right = y;
-        y.left = T2;
-
-        y.height = Math.max(this.getHeight(y.left), this.getHeight(y.right)) + 1;
-        x.height = Math.max(this.getHeight(x.left), this.getHeight(x.right)) + 1;
-
-        return x;
-      }
-
-      rotateLeft(x) {
-        const y = x.right;
-        const T2 = y.left;
-
-        y.left = x;
-        x.right = T2;
-
-        x.height = Math.max(this.getHeight(x.left), this.getHeight(x.right)) + 1;
-        y.height = Math.max(this.getHeight(y.left), this.getHeight(y.right)) + 1;
-
-        return y;
-      }
-
-      insert(node, data) {
-        // Standard BST insertion
-        if (!node) return new AVLNode(data);
-
-        if (data.timestamp < node.data.timestamp) {
-          node.left = this.insert(node.left, data);
-        } else if (data.timestamp > node.data.timestamp) {
-          node.right = this.insert(node.right, data);
-        } else {
-          return node; // Duplicate timestamps not allowed
-        }
-
-        // Update height
-        node.height = 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
-
-        // Get balance factor
-        const balance = this.getBalance(node);
-
-        // Left Left Case
-        if (balance > 1 && data.timestamp < node.left.data.timestamp) {
-          return this.rotateRight(node);
-        }
-
-        // Right Right Case
-        if (balance < -1 && data.timestamp > node.right.data.timestamp) {
-          return this.rotateLeft(node);
-        }
-
-        // Left Right Case
-        if (balance > 1 && data.timestamp > node.left.data.timestamp) {
-          node.left = this.rotateLeft(node.left);
-          return this.rotateRight(node);
-        }
-
-        // Right Left Case
-        if (balance < -1 && data.timestamp < node.right.data.timestamp) {
-          node.right = this.rotateRight(node.right);
-          return this.rotateLeft(node);
-        }
-
-        return node;
-      }
-
-      // Inorder traversal to get sorted messages
-      inorder(node, result) {
-        if (node) {
-          this.inorder(node.left, result);
-          result.push(node.data);
-          this.inorder(node.right, result);
-        }
-      }
-
-      getSortedMessages() {
-        const result = [];
-        this.inorder(this.root, result);
-        return result;
-      }
-    }
-
-    return new AVLTree();
-  }
-
-  // DSA: Segment Tree implementation for efficient range queries on session data
-  createSegmentTree(data) {
-    const n = data.length;
-    const tree = new Array(2 * n);
-
-    // Initialize leaves
-    for (let i = 0; i < n; i++) {
-      tree[n + i] = data[i];
-    }
-
-    // Build tree by calculating parents
-    for (let i = n - 1; i > 0; --i) {
-      tree[i] = {
-        count: (tree[i << 1] ? tree[i << 1].count : 0) + (tree[i << 1 | 1] ? tree[i << 1 | 1].count : 0),
-        // Add other aggregations as needed
-      };
-    }
-
-    return tree;
-  }
-
-  // DSA: Disjoint Set Union (DSU) for grouping related conversation topics
-  createDSU(maxSize) {
-    class DSU {
-      constructor(size) {
-        this.parent = new Array(size);
-        this.rank = new Array(size);
-        this.size = size;
-        
-        for (let i = 0; i < size; i++) {
-          this.parent[i] = i;
-          this.rank[i] = 0;
-        }
-      }
-
-      find(x) {
-        if (this.parent[x] !== x) {
-          this.parent[x] = this.find(this.parent[x]); // Path compression
-        }
-        return this.parent[x];
-      }
-
-      union(x, y) {
-        const xRoot = this.find(x);
-        const yRoot = this.find(y);
-
-        if (xRoot === yRoot) return;
-
-        // Union by rank
-        if (this.rank[xRoot] < this.rank[yRoot]) {
-          this.parent[xRoot] = yRoot;
-        } else if (this.rank[xRoot] > this.rank[yRoot]) {
-          this.parent[yRoot] = xRoot;
-        } else {
-          this.parent[yRoot] = xRoot;
-          this.rank[xRoot]++;
-        }
-      }
-    }
-
-    return new DSU(maxSize);
-  }
-
-  // DSA: Enhanced session data structure with multiple indexing strategies
+  // Simplified session data retrieval for better performance
   async getSessionData(sessionId) {
     try {
-      // DSA: Check Bloom Filter first for quick existence check
-      if (!this._mightExistInBloomFilter(sessionId)) {
-        // Session definitely doesn't exist
-        return {
-          history: [],
-          memories: [],
-          userProfile: {},
-          conversationContext: {},
-          lastActivity: new Date().toISOString(),
-          conversationFlow: [],
-          // DSA: Add advanced data structures
-          historyAVL: this.createAVLTree(),
-          topicGroups: this.createDSU(100), // For grouping related topics
-          accessPattern: [] // Track access patterns for optimization
-        };
-      }
-      
-      // DSA: Check cache first for O(1) access
+      // Check cache first
       if (this.sessionCache.has(sessionId)) {
-        const cachedData = this.sessionCache.get(sessionId);
-        // Update LRU tracking
-        this.lruSessions.set(sessionId, Date.now());
-        return cachedData;
+        return this.sessionCache.get(sessionId);
       }
       
-      // DSA: Check HashMap for O(1) lookup
-      if (this.sessionHashMap.has(sessionId)) {
-        const sessionData = this.sessionHashMap.get(sessionId);
-        // Cache the data
-        this.sessionCache.set(sessionId, sessionData);
-        this.lruSessions.set(sessionId, Date.now());
-        this._manageSessionCache();
-        return sessionData;
-      }
-      
-      // DSA: Fetch from KV store if not in cache
+      // Fetch from KV store
       const sessionData = await this.kv.get(`session:${sessionId}`);
-      const parsedData = sessionData ? JSON.parse(this._decompressSessionData(sessionData)) : {
-        history: [],
-        memories: [],
-        userProfile: {},
-        conversationContext: {},
-        lastActivity: new Date().toISOString(),
-        conversationFlow: [],
-        // DSA: Add advanced data structures
-        historyAVL: this.createAVLTree(),
-        topicGroups: this.createDSU(100), // For grouping related topics
-        accessPattern: [] // Track access patterns for optimization
-      };
+      const parsedData = sessionData ? JSON.parse(this._decompressSessionData(sessionData)) : this._createNewSessionData();
       
-      // DSA: Add to HashMap and cache for future access
-      this.sessionHashMap.set(sessionId, parsedData);
+      // Cache the data
       this.sessionCache.set(sessionId, parsedData);
-      this.lruSessions.set(sessionId, Date.now());
-      this._addToBloomFilter(sessionId);
       this._manageSessionCache();
       
       return parsedData;
     } catch (error) {
       console.error('Error getting session data:', error);
-      return {
-        history: [],
-        memories: [],
-        userProfile: {},
-        conversationContext: {},
-        lastActivity: new Date().toISOString(),
-        conversationFlow: [],
-        // DSA: Add advanced data structures
-        historyAVL: this.createAVLTree(),
-        topicGroups: this.createDSU(100), // For grouping related topics
-        accessPattern: [] // Track access patterns for optimization
-      };
+      return this._createNewSessionData();
     }
   }
 
-  // DSA: Enhanced save with advanced indexing
+  // Performance optimized session data creation
+  _createNewSessionData() {
+    return {
+      history: [],
+      memories: [],
+      userProfile: {},
+      conversationContext: {},
+      lastActivity: new Date().toISOString(),
+      conversationFlow: [],
+      accessPattern: []
+    };
+  }
+
+  // Simplified session save for better performance
   async saveSessionData(sessionId, sessionData) {
     try {
       // Update last activity
@@ -338,113 +74,42 @@ export class AdvancedSessionManager {
       
       // Limit memory items
       if (sessionData.memories.length > this.maxMemoryItems) {
-        sessionData.memories = this.prioritizeMemories(sessionData.memories)
-          .slice(0, this.maxMemoryItems);
+        sessionData.memories = sessionData.memories.slice(0, this.maxMemoryItems);
       }
       
-      // DSA: Update access pattern for optimization
-      if (!sessionData.accessPattern) {
-        sessionData.accessPattern = [];
-      }
-      sessionData.accessPattern.push({
-        timestamp: Date.now(),
-        action: 'save'
-      });
-      
-      // DSA: Maintain access pattern size
-      if (sessionData.accessPattern.length > 100) {
-        sessionData.accessPattern = sessionData.accessPattern.slice(-50);
-      }
-      
-      // DSA: Update HashMap and cache
-      this.sessionHashMap.set(sessionId, sessionData);
+      // Update cache
       this.sessionCache.set(sessionId, sessionData);
-      this.lruSessions.set(sessionId, Date.now());
-      this._addToBloomFilter(sessionId);
       this._manageSessionCache();
       
-      // DSA: Save to KV store with compression for better performance
+      // Save to KV store with compression
       const serializedData = JSON.stringify(sessionData);
-      // Simple compression for frequently occurring patterns
       const compressedData = this._compressSessionData(serializedData);
       
       await this.kv.put(`session:${sessionId}`, compressedData, {
-        expirationTtl: 86400 * 30 // 30 days
+        expirationTtl: 86400 * 3 // 3 days
       });
     } catch (error) {
       console.error('Error saving session data:', error);
     }
   }
 
-  // DSA: Enhanced context retrieval with multiple strategies
+  // Simplified context retrieval for better performance
   async getContextualPrompt(sessionId, userMessage) {
     const sessionData = await this.getSessionData(sessionId);
-    
-    // DSA: Use different strategies based on session size
-    let contextualPrompt;
-    
-    if (sessionData.history.length < 5) {
-      // For new sessions, use basic prompt
-      contextualPrompt = this.buildBasePrompt(sessionData.userProfile);
-    } else if (sessionData.history.length < 20) {
-      // For medium sessions, use standard approach
-      contextualPrompt = await this._buildStandardContext(sessionData, userMessage);
-    } else {
-      // For large sessions, use advanced DSA techniques
-      contextualPrompt = await this._buildAdvancedContext(sessionData, userMessage);
-    }
-    
-    return contextualPrompt;
+    return this._buildSimpleContext(sessionData, userMessage);
   }
 
-  // DSA: Standard context building
-  async _buildStandardContext(sessionData, userMessage) {
-    // Get relevant memories
-    const relevantMemories = this.memory.getRelevantMemories(
-      sessionData.memories, 
-      userMessage, 
-      5
-    );
-    
-    // Build contextual prompt with enhanced structure
+  // Simplified context building for better performance
+  _buildSimpleContext(sessionData, userMessage) {
+    // Build minimal contextual prompt
     let contextualPrompt = this.buildBasePrompt(sessionData.userProfile);
     
-    // Add conversation history context
+    // Include only last exchange for immediate context
     if (sessionData.history.length > 0) {
-      contextualPrompt += '\n\n**Recent Conversation History:**\n';
-      // Include last 3 exchanges for immediate context
-      const recentHistory = sessionData.history.slice(-6); // 3 user+AI exchanges
-      recentHistory.forEach(msg => {
-        const role = msg.role === 'user' ? 'User' : 'IslamicAI';
-        contextualPrompt += `${role}: ${msg.content}\n`;
-      });
-    }
-    
-    // Add memory context
-    if (relevantMemories.length > 0) {
-      contextualPrompt += '\n\n**Relevant Context from Previous Conversations:**\n';
-      relevantMemories.forEach(memory => {
-        contextualPrompt += `- ${memory.content}\n`;
-        this.memory.updateMemoryAccess(memory);
-      });
-    }
-    
-    // Add conversation context
-    if (sessionData.conversationContext.topics && sessionData.conversationContext.topics.length > 0) {
-      contextualPrompt += `\n**Current Conversation Topics:** ${sessionData.conversationContext.topics.join(', ')}\n`;
-    }
-    
-    // Add emotional context
-    if (sessionData.userProfile.currentEmotionalState) {
-      contextualPrompt += `\n**User's Current Emotional State:** ${sessionData.userProfile.currentEmotionalState}\n`;
-    }
-    
-    // Add conversation flow context
-    if (sessionData.conversationFlow.length > 0) {
-      const lastFlowItem = sessionData.conversationFlow[sessionData.conversationFlow.length - 1];
-      if (lastFlowItem.contextShift) {
-        contextualPrompt += '\n**Note:** The conversation topic has shifted. Please acknowledge this transition appropriately.\n';
-      }
+      contextualPrompt += '\n\n**Recent Message:**\n';
+      const lastMessage = sessionData.history[sessionData.history.length - 1];
+      const role = lastMessage.role === 'user' ? 'User' : 'IslamicAI';
+      contextualPrompt += `${role}: ${lastMessage.content.substring(0, 100)}\n`;
     }
     
     return contextualPrompt;
@@ -544,7 +209,90 @@ export class AdvancedSessionManager {
       contextualPrompt += `\n**Conversation Complexity:** ${complexity}\n`;
     }
     
+    // NEW: Add personalized response context based on user preferences and history
+    contextualPrompt += this._buildPersonalizedContext(sessionData, userMessage);
+    
     return contextualPrompt;
+  }
+
+  // NEW: Build personalized context based on user history and preferences
+  _buildPersonalizedContext(sessionData, userMessage) {
+    let personalizedContext = '\n\n**Personalized Response Context:**\n';
+    
+    // Add user name if known
+    if (sessionData.userProfile.keyFacts && sessionData.userProfile.keyFacts.name) {
+      personalizedContext += `- The user's name is ${sessionData.userProfile.keyFacts.name}. Address them by name when appropriate.\n`;
+    }
+    
+    // Add user location if known
+    if (sessionData.userProfile.keyFacts && sessionData.userProfile.keyFacts.location) {
+      personalizedContext += `- The user is located in ${sessionData.userProfile.keyFacts.location}. Consider local context when relevant.\n`;
+    }
+    
+    // Add user's preferred topics
+    if (sessionData.conversationContext.topics && sessionData.conversationContext.topics.length > 0) {
+      personalizedContext += `- The user has shown interest in these topics: ${sessionData.conversationContext.topics.join(', ')}.\n`;
+    }
+    
+    // Add user's learning patterns
+    if (sessionData.userProfile.learningPatterns) {
+      const patterns = sessionData.userProfile.learningPatterns;
+      if (patterns.questionTypes && patterns.questionTypes.length > 0) {
+        personalizedContext += `- The user typically asks ${patterns.questionTypes.join(', ')} type questions.\n`;
+      }
+      personalizedContext += `- The user prefers ${patterns.responseLength || 'medium'} length responses.\n`;
+    }
+    
+    // Add user's emotional journey
+    if (sessionData.userProfile.currentEmotionalState) {
+      personalizedContext += `- The user's current emotional state is ${sessionData.userProfile.currentEmotionalState}. Respond with appropriate empathy.\n`;
+    }
+    
+    // Add conversation progression context
+    const totalMessages = sessionData.history.length;
+    if (totalMessages > 10) {
+      personalizedContext += `- This is an ongoing conversation with ${Math.floor(totalMessages/2)} exchanges. The user is engaged and returning for more information.\n`;
+    } else if (totalMessages > 4) {
+      personalizedContext += `- This is a developing conversation. The user is building a relationship with IslamicAI.\n`;
+    } else {
+      personalizedContext += `- This is a new conversation. Be welcoming and establish trust.\n`;
+    }
+    
+    // Add response style preferences
+    if (sessionData.userProfile.responseStyle) {
+      personalizedContext += `- The user prefers ${sessionData.userProfile.responseStyle} responses.\n`;
+    }
+    
+    // Add Fiqh school preference
+    if (sessionData.userProfile.fiqhSchool) {
+      personalizedContext += `- The user follows the ${sessionData.userProfile.fiqhSchool} school of Fiqh. Consider this when discussing jurisprudential matters.\n`;
+    }
+    
+    // Add language preference
+    if (sessionData.userProfile.preferredLanguage) {
+      const languageNames = {
+        'english': 'English',
+        'hindi': 'Hindi (हिंदी)',
+        'bengali': 'Bengali (বাংলা)',
+        'hinglish': 'Hinglish (Hindi + English mix)',
+        'urdu': 'Urdu (اردو)',
+        'arabic': 'Arabic (العربية)',
+        'persian': 'Persian (فارسی)'
+      };
+      personalizedContext += `- The user prefers responses in ${languageNames[sessionData.userProfile.preferredLanguage] || sessionData.userProfile.preferredLanguage}.\n`;
+    }
+    
+    // Add previous discussion context
+    const recentUserMessages = sessionData.history
+      .filter(msg => msg.role === 'user')
+      .slice(-3)
+      .map(msg => msg.content);
+    
+    if (recentUserMessages.length > 0) {
+      personalizedContext += `- Recent user questions: ${recentUserMessages.join('; ')}.\n`;
+    }
+    
+    return personalizedContext;
   }
 
   // DSA: Cluster messages by time for better context organization

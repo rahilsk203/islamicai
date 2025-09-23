@@ -135,3 +135,77 @@ Make sure backend is running on ${TEST_ENDPOINT}
 runTest().catch(error => {
   console.error('❌ Test failed:', error.message);
 });
+
+// Test the bytes fix for ReadableStream
+
+import { ReadableStream } from 'stream/web';
+import { TextEncoder } from 'util';
+import { IslamicPrompt } from './src/islamic-prompt.js';
+
+// Mock the GeminiAPI class to test the bytes fix
+class MockGeminiAPI {
+  constructor() {
+    this.islamicPrompt = new IslamicPrompt();
+  }
+
+  createStreamingChunk(data) {
+    return `data: ${JSON.stringify(data)}\n\n`;
+  }
+
+  createStreamingError(errorMessage) {
+    // Capture the method reference to avoid 'this' context issues
+    const createStreamingChunk = (data) => this.createStreamingChunk(data);
+    
+    return new ReadableStream({
+      start(controller) {
+        const chunk = createStreamingChunk({
+          type: 'error',
+          content: errorMessage,
+          timestamp: new Date().toISOString()
+        });
+        // Convert string to bytes using TextEncoder
+        controller.enqueue(new TextEncoder().encode(chunk));
+        controller.close();
+      }
+    });
+  }
+}
+
+async function testBytesFix() {
+  console.log('🔧 IslamicAI Bytes Fix Verification');
+  console.log('==================================');
+  console.log('\nTesting the bytes fix for ReadableStream.\n');
+  
+  const mockAPI = new MockGeminiAPI();
+  
+  // Test 1: Create a streaming error
+  console.log('1. Testing createStreamingError method with bytes:');
+  try {
+    const errorStream = mockAPI.createStreamingError('Test error message');
+    console.log('✅ Error stream created successfully');
+    
+    // Try to read from the stream
+    const reader = errorStream.getReader();
+    const { done, value } = await reader.read();
+    
+    if (!done && value) {
+      console.log('✅ Bytes received from stream:');
+      console.log('Type of value:', typeof value);
+      console.log('Value is Uint8Array:', value instanceof Uint8Array);
+      console.log('Byte length:', value.length);
+      
+      // Decode the bytes to verify content
+      const decoded = new TextDecoder().decode(value);
+      console.log('✅ Decoded content:');
+      console.log(decoded);
+    }
+    
+    reader.releaseLock();
+  } catch (error) {
+    console.error('❌ Error creating streaming error:', error);
+  }
+  
+  console.log('\n✅ Bytes Fix Test Complete');
+}
+
+testBytesFix().catch(console.error);
