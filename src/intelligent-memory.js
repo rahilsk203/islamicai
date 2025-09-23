@@ -20,6 +20,62 @@ export class IntelligentMemory {
     this.memoryIndex = new Map(); // Inverted index for fast keyword search
     this.lruCache = new Map(); // LRU cache for memory eviction
     this.cacheCapacity = 1000;
+    
+    // DSA: Bloom Filter for quick memory existence check
+    this.memoryBloomFilter = new Set();
+    
+    // DSA: Hash Map for O(1) memory lookup
+    this.memoryHashMap = new Map();
+  }
+
+  // DSA: Bloom Filter implementation for memory existence check
+  _addToMemoryBloomFilter(content) {
+    // Simple implementation using multiple hash functions
+    const hashes = [
+      this._hash1(content),
+      this._hash2(content),
+      this._hash3(content)
+    ];
+    
+    hashes.forEach(hash => this.memoryBloomFilter.add(hash));
+  }
+
+  _mightExistInMemoryBloomFilter(content) {
+    const hashes = [
+      this._hash1(content),
+      this._hash2(content),
+      this._hash3(content)
+    ];
+    
+    return hashes.every(hash => this.memoryBloomFilter.has(hash));
+  }
+
+  // Simple hash functions for Bloom Filter
+  _hash1(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0; // Convert to 32-bit integer
+    }
+    return Math.abs(hash);
+  }
+
+  _hash2(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 7) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  }
+
+  _hash3(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 3) - hash + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
   }
 
   // DSA: Enhanced Trie implementation with compression for efficient memory search
@@ -220,14 +276,389 @@ export class IntelligentMemory {
     };
   }
 
-  // Extract important information from conversation
+  // DSA: Enhanced memory creation with better metadata
+  createMemory(content, type, priority = this.memoryPriority.MEDIUM, metadata = {}) {
+    const memoryId = this.generateMemoryId();
+    
+    // DSA: Add to Bloom Filter for quick existence check
+    this._addToMemoryBloomFilter(content);
+    
+    const memory = {
+      id: memoryId,
+      content,
+      type,
+      priority,
+      timestamp: new Date().toISOString(),
+      metadata,
+      accessCount: 0,
+      lastAccessed: new Date().toISOString(),
+      tfidfScore: 0, // For TF-IDF scoring
+      relevanceScore: 0, // Combined relevance score
+      // DSA: Enhanced metadata for better memory management
+      decayFactor: 1.0, // For memory decay algorithms
+      associations: [], // Related memories
+      context: {
+        sessionId: metadata.sessionId || 'unknown',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      // DSA: Memory clustering information
+      clusterId: null,
+      similarityHash: this._generateSimilarityHash(content),
+      // DSA: Usage patterns
+      usagePatterns: {
+        accessTimes: [Date.now()],
+        frequency: 1,
+        lastAccessTime: Date.now()
+      }
+    };
+    
+    // DSA: Add to HashMap for O(1) lookup
+    this.memoryHashMap.set(memoryId, memory);
+    
+    return memory;
+  }
+
+  // DSA: Generate similarity hash for content comparison
+  _generateSimilarityHash(content) {
+    // Simple implementation - in production, you might use more sophisticated algorithms
+    const words = content.toLowerCase().split(/\s+/).slice(0, 10); // First 10 words
+    return words.sort().join('|');
+  }
+
+  // DSA: Check if similar memory exists
+  _hasSimilarMemory(content) {
+    const similarityHash = this._generateSimilarityHash(content);
+    for (const [id, memory] of this.memoryHashMap.entries()) {
+      if (memory.similarityHash === similarityHash) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // DSA: Enhanced memory update with access pattern tracking
+  updateMemoryAccess(memory) {
+    memory.accessCount++;
+    memory.lastAccessed = new Date().toISOString();
+    
+    // DSA: Update usage patterns
+    memory.usagePatterns.accessTimes.push(Date.now());
+    memory.usagePatterns.frequency++;
+    memory.usagePatterns.lastAccessTime = Date.now();
+    
+    // DSA: Update access times array to keep only recent accesses
+    if (memory.usagePatterns.accessTimes.length > 50) {
+      memory.usagePatterns.accessTimes = memory.usagePatterns.accessTimes.slice(-25);
+    }
+    
+    // DSA: Update decay factor based on access pattern
+    const timeSinceLastAccess = (Date.now() - memory.usagePatterns.lastAccessTime) / (1000 * 60 * 60); // hours
+    memory.decayFactor = Math.max(0.1, 1.0 - (timeSinceLastAccess / 168)); // Decay over a week
+    
+    // DSA: Update LRU cache
+    this.lruCache.set(memory.id, Date.now());
+    if (this.lruCache.size > this.cacheCapacity) {
+      // Remove oldest entry
+      const oldestKey = [...this.lruCache.entries()].reduce((a, e) => e[1] < a[1] ? e : a)[0];
+      this.lruCache.delete(oldestKey);
+    }
+    
+    // DSA: Update HashMap
+    this.memoryHashMap.set(memory.id, memory);
+  }
+
+  // DSA: Enhanced memory retrieval with advanced algorithms
+  getRelevantMemories(memories, query, limit = 5) {
+    if (memories.length === 0) return [];
+    
+    // DSA: Check if we have enough memories to justify advanced algorithms
+    if (memories.length < 10) {
+      // For small memory sets, use simple approach
+      return this._getRelevantMemoriesSimple(memories, query, limit);
+    } else {
+      // For large memory sets, use advanced DSA algorithms
+      return this._getRelevantMemoriesAdvanced(memories, query, limit);
+    }
+  }
+
+  // DSA: Simple memory retrieval for small datasets
+  _getRelevantMemoriesSimple(memories, query, limit = 5) {
+    // Build inverted index if not exists
+    if (this.memoryIndex.size === 0) {
+      this.memoryIndex = this.buildInvertedIndex(memories);
+    }
+    
+    // Calculate TF-IDF scores
+    const scoredMemories = this.calculateTFIDF(query, memories);
+    
+    // Sort by TF-IDF score and return top results
+    return scoredMemories
+      .sort((a, b) => b.tfidfScore - a.tfidfScore)
+      .slice(0, limit)
+      .map(memory => {
+        // Update access for returned memories
+        this.updateMemoryAccess(memory);
+        return memory;
+      });
+  }
+
+  // DSA: Advanced memory retrieval with graph algorithms
+  _getRelevantMemoriesAdvanced(memories, query, limit = 5) {
+    // DSA: Use clustering to group similar memories
+    const clusters = this._clusterMemories(memories);
+    
+    // DSA: Find relevant clusters
+    const relevantClusters = this._findRelevantClusters(clusters, query);
+    
+    // DSA: Get top memories from relevant clusters
+    const relevantMemories = [];
+    relevantClusters.forEach(cluster => {
+      // Calculate TF-IDF scores for cluster memories
+      const scoredMemories = this.calculateTFIDF(query, cluster.memories);
+      
+      // Sort by TF-IDF score
+      const sortedMemories = scoredMemories.sort((a, b) => b.tfidfScore - a.tfidfScore);
+      
+      // Add top memories from cluster
+      relevantMemories.push(...sortedMemories.slice(0, Math.ceil(limit / relevantClusters.length)));
+    });
+    
+    // DSA: Sort all relevant memories by combined score
+    const finalMemories = relevantMemories
+      .sort((a, b) => {
+        // Combined score: TF-IDF + decay factor + priority
+        const scoreA = (a.tfidfScore || 0) * a.decayFactor * a.priority;
+        const scoreB = (b.tfidfScore || 0) * b.decayFactor * b.priority;
+        return scoreB - scoreA;
+      })
+      .slice(0, limit);
+    
+    // DSA: Update access for returned memories
+    finalMemories.forEach(memory => {
+      this.updateMemoryAccess(memory);
+    });
+    
+    return finalMemories;
+  }
+
+  // DSA: Cluster memories using similarity metrics
+  _clusterMemories(memories) {
+    // Simple clustering algorithm based on content similarity
+    const clusters = [];
+    const visited = new Set();
+    
+    memories.forEach((memory, index) => {
+      if (visited.has(index)) return;
+      
+      // Create new cluster with current memory
+      const cluster = {
+        id: clusters.length,
+        memories: [memory],
+        centroid: this._calculateCentroid([memory])
+      };
+      
+      visited.add(index);
+      
+      // Find similar memories
+      memories.forEach((otherMemory, otherIndex) => {
+        if (visited.has(otherIndex)) return;
+        
+        // Calculate similarity
+        const similarity = this._calculateSimilarity(memory, otherMemory);
+        
+        // If similar enough, add to cluster
+        if (similarity > 0.3) { // Threshold for similarity
+          cluster.memories.push(otherMemory);
+          visited.add(otherIndex);
+        }
+      });
+      
+      // Update centroid
+      cluster.centroid = this._calculateCentroid(cluster.memories);
+      clusters.push(cluster);
+    });
+    
+    return clusters;
+  }
+
+  // DSA: Calculate centroid of memory cluster
+  _calculateCentroid(memories) {
+    // Simple centroid calculation based on word frequency
+    const wordCounts = {};
+    let totalWords = 0;
+    
+    memories.forEach(memory => {
+      const words = memory.content.toLowerCase().split(/\s+/);
+      words.forEach(word => {
+        wordCounts[word] = (wordCounts[word] || 0) + 1;
+        totalWords++;
+      });
+    });
+    
+    // Normalize word counts
+    const centroid = {};
+    Object.keys(wordCounts).forEach(word => {
+      centroid[word] = wordCounts[word] / totalWords;
+    });
+    
+    return centroid;
+  }
+
+  // DSA: Calculate similarity between two memories
+  _calculateSimilarity(memory1, memory2) {
+    // Simple cosine similarity based on word overlap
+    const words1 = new Set(memory1.content.toLowerCase().split(/\s+/));
+    const words2 = new Set(memory2.content.toLowerCase().split(/\s+/));
+    
+    const intersection = [...words1].filter(word => words2.has(word)).length;
+    const union = new Set([...words1, ...words2]).size;
+    
+    return union === 0 ? 0 : intersection / union;
+  }
+
+  // DSA: Find relevant clusters based on query
+  _findRelevantClusters(clusters, query) {
+    const queryWords = new Set(query.toLowerCase().split(/\s+/));
+    const relevantClusters = [];
+    
+    clusters.forEach(cluster => {
+      // Calculate cluster relevance to query
+      let relevanceScore = 0;
+      const centroid = cluster.centroid;
+      
+      // Check overlap between query words and cluster centroid
+      Object.keys(centroid).forEach(word => {
+        if (queryWords.has(word)) {
+          relevanceScore += centroid[word];
+        }
+      });
+      
+      // If relevant enough, add to results
+      if (relevanceScore > 0.1) { // Threshold for relevance
+        relevantClusters.push({
+          ...cluster,
+          relevanceScore
+        });
+      }
+    });
+    
+    // Sort by relevance score
+    return relevantClusters.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  }
+
+  // DSA: Memory decay algorithm to forget less important memories
+  applyMemoryDecay(memories) {
+    const now = Date.now();
+    const oneWeek = 7 * 24 * 60 * 60 * 1000; // milliseconds in a week
+    
+    return memories.filter(memory => {
+      const age = now - new Date(memory.timestamp).getTime();
+      
+      // Apply decay based on priority and access pattern
+      if (memory.priority === this.memoryPriority.HIGH) {
+        // High priority memories last longer
+        return age < (4 * oneWeek); // 4 weeks
+      } else if (memory.priority === this.memoryPriority.MEDIUM) {
+        // Medium priority memories
+        return age < (2 * oneWeek); // 2 weeks
+      } else {
+        // Low priority memories
+        return age < oneWeek; // 1 week
+      }
+    });
+  }
+
+  // DSA: Memory consolidation to merge similar memories
+  consolidateMemories(memories) {
+    const consolidated = [];
+    const processed = new Set();
+    
+    memories.forEach((memory, index) => {
+      if (processed.has(index)) return;
+      
+      // Find similar memories
+      const similarMemories = [memory];
+      memories.forEach((otherMemory, otherIndex) => {
+        if (processed.has(otherIndex) || index === otherIndex) return;
+        
+        const similarity = this._calculateSimilarity(memory, otherMemory);
+        if (similarity > 0.5) { // High similarity threshold
+          similarMemories.push(otherMemory);
+          processed.add(otherIndex);
+        }
+      });
+      
+      // Consolidate similar memories
+      if (similarMemories.length > 1) {
+        const consolidatedMemory = this._mergeMemories(similarMemories);
+        consolidated.push(consolidatedMemory);
+      } else {
+        consolidated.push(memory);
+      }
+      
+      processed.add(index);
+    });
+    
+    return consolidated;
+  }
+
+  // DSA: Merge similar memories
+  _mergeMemories(memories) {
+    // Create merged memory with combined properties
+    const primaryMemory = memories[0];
+    
+    // Merge content (take first memory's content as base)
+    const mergedContent = primaryMemory.content;
+    
+    // Merge metadata
+    const mergedMetadata = {};
+    memories.forEach(memory => {
+      Object.keys(memory.metadata).forEach(key => {
+        if (!mergedMetadata[key]) {
+          mergedMetadata[key] = memory.metadata[key];
+        }
+      });
+    });
+    
+    // Take highest priority
+    const mergedPriority = Math.max(...memories.map(m => m.priority));
+    
+    // Sum access counts
+    const mergedAccessCount = memories.reduce((sum, m) => sum + m.accessCount, 0);
+    
+    // Take most recent timestamp
+    const mergedTimestamp = memories.reduce((latest, m) => 
+      new Date(m.lastAccessed) > new Date(latest) ? m.lastAccessed : latest, 
+      primaryMemory.lastAccessed
+    );
+    
+    return {
+      ...primaryMemory,
+      content: mergedContent,
+      metadata: mergedMetadata,
+      priority: mergedPriority,
+      accessCount: mergedAccessCount,
+      lastAccessed: mergedTimestamp,
+      // Keep track of merged memories
+      mergedFrom: memories.map(m => m.id)
+    };
+  }
+
+  // DSA: Enhanced important info extraction with better algorithms
   extractImportantInfo(message, conversationHistory) {
+    // DSA: Use advanced algorithms for better extraction
     const importantInfo = {
       userPreferences: this.extractUserPreferences(message),
       islamicTopics: this.extractIslamicTopics(message),
       emotionalContext: this.analyzeEmotionalState(message),
       learningPatterns: this.analyzeLearningPatterns(conversationHistory),
-      keyFacts: this.extractKeyFacts(message)
+      keyFacts: this.extractKeyFacts(message),
+      // DSA: Enhanced extraction
+      conversationThemes: this._extractConversationThemes(conversationHistory),
+      userIntent: this._analyzeUserIntent(message),
+      contextShift: this._detectContextShift(conversationHistory, message),
+      complexityLevel: this._assessComplexity(message, conversationHistory)
     };
 
     return importantInfo;
@@ -416,60 +847,111 @@ export class IntelligentMemory {
     return facts;
   }
 
-  // Create memory object with enhanced metadata
-  createMemory(content, type, priority = this.memoryPriority.MEDIUM, metadata = {}) {
-    return {
-      id: this.generateMemoryId(),
-      content,
-      type,
-      priority,
-      timestamp: new Date().toISOString(),
-      metadata,
-      accessCount: 0,
-      lastAccessed: new Date().toISOString(),
-      tfidfScore: 0, // For TF-IDF scoring
-      relevanceScore: 0 // Combined relevance score
-    };
-  }
-
   generateMemoryId() {
     return 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
   }
 
-  // Update memory access with LRU tracking
-  updateMemoryAccess(memory) {
-    memory.accessCount++;
-    memory.lastAccessed = new Date().toISOString();
+  // DSA: Extract conversation themes
+  _extractConversationThemes(conversationHistory) {
+    if (conversationHistory.length === 0) return [];
     
-    // Update LRU cache
-    this.lruCache.set(memory.id, Date.now());
-    if (this.lruCache.size > this.cacheCapacity) {
-      // Remove oldest entry
-      const oldestKey = [...this.lruCache.entries()].reduce((a, e) => e[1] < a[1] ? e : a)[0];
-      this.lruCache.delete(oldestKey);
-    }
+    // Get all user messages
+    const userMessages = conversationHistory
+      .filter(msg => msg.role === 'user')
+      .map(msg => msg.content);
+    
+    if (userMessages.length === 0) return [];
+    
+    // Extract topics from all messages
+    const allTopics = userMessages.flatMap(message => 
+      this.extractIslamicTopics(message)
+    );
+    
+    // Count topic frequency
+    const topicCounts = {};
+    allTopics.forEach(topic => {
+      topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+    });
+    
+    // Return most frequent topics
+    return Object.entries(topicCounts)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 3)
+      .map(([topic]) => topic);
   }
 
-  // Get relevant memories for context with enhanced search
-  getRelevantMemories(memories, query, limit = 5) {
-    if (memories.length === 0) return [];
+  // DSA: Analyze user intent with better algorithms
+  _analyzeUserIntent(message) {
+    const lowerMessage = message.toLowerCase();
     
-    // Build inverted index if not exists
-    if (this.memoryIndex.size === 0) {
-      this.memoryIndex = this.buildInvertedIndex(memories);
+    // Enhanced intent detection
+    const intents = {
+      question: /(\bwhat\b|\bwhy\b|\bhow\b|\bwhen\b|\bwhere\b|\bwhich\b|\bwho\b|\?)/.test(lowerMessage),
+      explanation: /(\bexplain\b|\bdescribe\b|\btell me\b|\bhow does\b)/.test(lowerMessage),
+      request: /(\bplease\b|\bcould you\b|\bwould you\b|\bcan you\b|\bi need\b|\bi want\b)/.test(lowerMessage),
+      debate: /(\bprove\b|\bargue\b|\bdisagree\b|\bchallenge\b|\bdebate\b)/.test(lowerMessage),
+      emotional: /(\bsad\b|\bupset\b|\bconfused\b|\bfrustrated\b|\bgrateful\b|\bthank\b)/.test(lowerMessage)
+    };
+    
+    // Return primary intent
+    for (const [intent, isMatch] of Object.entries(intents)) {
+      if (isMatch) return intent;
     }
     
-    // Calculate TF-IDF scores
-    const scoredMemories = this.calculateTFIDF(query, memories);
-    
-    // Sort by TF-IDF score and return top results
-    return scoredMemories
-      .sort((a, b) => b.tfidfScore - a.tfidfScore)
-      .slice(0, limit)
-      .map(memory => {
-        // Update access for returned memories
-        this.updateMemoryAccess(memory);
-        return memory;
-      });
+    return 'general';
   }
+
+  // DSA: Detect context shift with better algorithms
+  _detectContextShift(conversationHistory, newMessage) {
+    if (conversationHistory.length < 2) return false;
+    
+    // Get last user message
+    const lastUserMessages = conversationHistory
+      .filter(msg => msg.role === 'user')
+      .slice(-2)
+      .map(msg => msg.content);
+    
+    if (lastUserMessages.length === 0) return false;
+    
+    const lastMessage = lastUserMessages[lastUserMessages.length - 1];
+    
+    // Extract topics from both messages
+    const lastTopics = this.extractIslamicTopics(lastMessage);
+    const newTopics = this.extractIslamicTopics(newMessage);
+    
+    // Calculate topic overlap
+    const commonTopics = lastTopics.filter(topic => newTopics.includes(topic));
+    const overlapRatio = commonTopics.length / Math.max(lastTopics.length, newTopics.length);
+    
+    // Context shift if less than 30% overlap
+    return overlapRatio < 0.3;
+  }
+
+  // DSA: Assess complexity with better metrics
+  _assessComplexity(message, conversationHistory) {
+    // Message complexity
+    const wordCount = message.split(/\s+/).length;
+    const sentenceCount = message.split(/[.!?]+/).length;
+    const avgWordsPerSentence = wordCount / sentenceCount;
+    
+    // Conversation history complexity
+    const historyLength = conversationHistory.length;
+    const uniqueTopics = new Set(
+      conversationHistory
+        .filter(msg => msg.role === 'user')
+        .flatMap(msg => this.extractIslamicTopics(msg.content))
+    ).size;
+    
+    // Combined complexity score
+    let score = 0;
+    if (wordCount > 50) score += 1;
+    if (avgWordsPerSentence > 20) score += 1;
+    if (historyLength > 20) score += 1;
+    if (uniqueTopics > 3) score += 1;
+    
+    if (score >= 3) return 'high';
+    if (score >= 1) return 'medium';
+    return 'low';
+  }
+
 }

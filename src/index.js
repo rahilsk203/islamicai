@@ -325,7 +325,7 @@ export default {
           }
         }
 
-        // Prepare response
+        // Prepare response with enhanced formatting
         const response = {
           session_id: sessionId,
           reply: geminiResponse,
@@ -336,7 +336,15 @@ export default {
           api_keys_used: apiKeys.length,
           language_info: enhancedLanguageInfo,
           internet_enhanced: true, // Indicate that responses may include internet data
-          location_info: locationInfo // Include location information
+          location_info: locationInfo, // Include location information
+          timestamp: new Date().toISOString(),
+          response_metadata: {
+            response_length: geminiResponse.length,
+            language_detected: enhancedLanguageInfo.detected_language,
+            adaptation_type: enhancedLanguageInfo.adaptation_type,
+            internet_data_used: internetData.needsInternetData,
+            search_strategy: internetData.searchResults ? internetData.searchResults.searchStrategy : null
+          }
         };
 
         console.log(`Direct response generated for session ${sessionId}, length: ${geminiResponse.length}`);
@@ -407,6 +415,7 @@ export default {
       const enhancedStream = new ReadableStream({
         async start(controller) {
           let fullResponse = '';
+          let metadataSent = false;
           
           try {
             const reader = stream.getReader();
@@ -419,6 +428,25 @@ export default {
               // Parse the chunk
               const chunkData = parseStreamingChunk(value);
               
+              // Send metadata once at the beginning
+              if (!metadataSent && chunkData.type !== 'start') {
+                const metadataChunk = `data: ${JSON.stringify({
+                  type: 'metadata',
+                  content: {
+                    session_id: sessionId,
+                    streaming: true,
+                    timestamp: new Date().toISOString(),
+                    language_info: enhancedLanguageInfo,
+                    chunk_info: {
+                      size: streamingOptions.chunkSize,
+                      delay: streamingOptions.delay
+                    }
+                  }
+                })}\n\n`;
+                controller.enqueue(new TextEncoder().encode(metadataChunk));
+                metadataSent = true;
+              }
+              
               if (chunkData && chunkData.type === 'content') {
                 fullResponse += chunkData.content;
               }
@@ -426,6 +454,18 @@ export default {
               // Forward the chunk
               controller.enqueue(value);
             }
+            
+            // Send completion metadata
+            const completionChunk = `data: ${JSON.stringify({
+              type: 'completion',
+              content: {
+                session_id: sessionId,
+                response_length: fullResponse.length,
+                timestamp: new Date().toISOString(),
+                message: 'Response completed successfully ✅'
+              }
+            })}\n\n`;
+            controller.enqueue(new TextEncoder().encode(completionChunk));
             
             // Process the complete message for session management
             if (fullResponse.trim()) {
@@ -439,7 +479,7 @@ export default {
             
           } catch (error) {
             console.error('Streaming processing error:', error);
-            const errorChunk = createErrorChunk('Streaming error occurred');
+            const errorChunk = createErrorChunk('Streaming error occurred ⚠️');
             controller.enqueue(new TextEncoder().encode(errorChunk));
           } finally {
             controller.close();
@@ -467,7 +507,7 @@ export default {
       // Return error as streaming response
       const errorStream = new ReadableStream({
         start: (controller) => {
-          const errorChunk = createErrorChunk('Streaming service temporarily unavailable');
+          const errorChunk = createErrorChunk('Streaming service temporarily unavailable ⚠️');
           controller.enqueue(new TextEncoder().encode(errorChunk));
           controller.close();
         }

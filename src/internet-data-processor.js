@@ -33,7 +33,11 @@ export class InternetDataProcessor {
         'middle_east_news',
         'muslim_world_news',
         'gold_prices', // Add gold prices as a category that needs internet data
-        'current_prices' // Add general current prices
+        'current_prices', // Add general current prices
+        'quran_verses', // Add Quran verses
+        'hadith_references', // Add Hadith references
+        'fiqh_guidance', // Add Fiqh guidance
+        'historical_events' // Add historical events
       ],
       
       // Rules for data validation
@@ -46,7 +50,13 @@ export class InternetDataProcessor {
       addSourceAttribution: true,
       addTimestamp: true,
       addDisclaimer: true,
-      includeAlJazeeraNews: true // Enable Al Jazeera news integration
+      includeAlJazeeraNews: true, // Enable Al Jazeera news integration
+      
+      // Enhanced processing rules
+      enableSemanticSearch: true, // Enable semantic search
+      enableAISearch: true, // Enable AI-powered search
+      maxSearchResults: 15, // Increase max search results
+      searchTimeout: 20000 // Increase search timeout
     };
   }
 
@@ -87,12 +97,20 @@ export class InternetDataProcessor {
       const priceKeywords = ['gold price', 'silver price', 'gold rate', 'silver rate', 'metal price', 'commodity price', 'dam hai', 'kaya dam', 'price kya'];
       const hasPriceQuery = priceKeywords.some(keyword => lowerQuery.includes(keyword));
       
-      if (hasPriceQuery && !searchDecision.needsSearch) {
-        // Override the decision for price-related queries
+      // Additional checks for Islamic knowledge queries
+      const islamicKnowledgeKeywords = [
+        'quran verse', 'surah', 'ayah', 'hadith', 'prophet said', 
+        'fiqh', 'halal', 'haram', 'zakat', 'sadaqah', 'dua',
+        'islamic history', 'seerah', 'caliph', 'sahaba'
+      ];
+      const hasIslamicKnowledgeQuery = islamicKnowledgeKeywords.some(keyword => lowerQuery.includes(keyword));
+      
+      if ((hasPriceQuery || hasIslamicKnowledgeQuery) && !searchDecision.needsSearch) {
+        // Override the decision for price or Islamic knowledge queries
         searchDecision.needsSearch = true;
-        searchDecision.reason = 'price_query';
+        searchDecision.reason = hasPriceQuery ? 'price_query' : 'islamic_knowledge_query';
         searchDecision.priority = 'high';
-        console.log('Overriding search decision for price query');
+        console.log('Overriding search decision for price or Islamic knowledge query');
       }
       
       // Check if query is about prayer times and we have user IP
@@ -113,17 +131,19 @@ export class InternetDataProcessor {
 
       console.log(`Query needs internet search: ${searchDecision.reason}`);
       
-      // Use advanced web search for more intelligent queries
+      // Use advanced web search for more intelligent queries with enhanced options
       let searchResults;
       if (searchDecision.priority === 'high' || (advancedSearchDecision.needsSearch && advancedSearchDecision.priority !== 'low')) {
         console.log('Using advanced web search for high-priority query');
         searchResults = await this.advancedWebSearch.search(userMessage, {
-          maxResults: 10,
+          maxResults: this.processingRules.maxSearchResults,
           includeIslamicSources: true,
-          searchEngines: ['duckduckgo', 'google', 'bing', 'brave'], // Use more search engines
-          timeout: 15000,
+          searchEngines: ['duckduckgo', 'google', 'bing', 'brave', 'perplexity', 'exa'], // Use more search engines
+          timeout: this.processingRules.searchTimeout,
           language: context.language || 'en',
-          region: context.region || 'us'
+          region: context.region || 'us',
+          enableSemanticSearch: this.processingRules.enableSemanticSearch,
+          enableAISearch: this.processingRules.enableAISearch
         });
       } else {
         // Fall back to regular web search for lower priority queries
