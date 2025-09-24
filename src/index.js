@@ -87,7 +87,10 @@ export default {
           timestamp: new Date().toISOString()
         }), {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
         });
       }
 
@@ -115,7 +118,10 @@ export default {
             timestamp: new Date().toISOString()
           }), {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
           });
         } catch (error) {
           return new Response(JSON.stringify({
@@ -125,7 +131,10 @@ export default {
             timestamp: new Date().toISOString()
           }), {
             status: 200,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            },
           });
         }
       }
@@ -140,7 +149,10 @@ export default {
       if (request.method !== 'POST') {
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
           status: 405,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
         });
       }
 
@@ -177,15 +189,33 @@ export default {
     const cfConnectingIP = request.headers.get('CF-Connecting-IP');
     const xForwardedFor = request.headers.get('X-Forwarded-For');
     const xRealIP = request.headers.get('X-Real-IP');
-    const remoteAddr = request.headers.get('X-Forwarded-For') || request.headers.get('X-Real-IP');
     
-    // Priority order: CF-Connecting-IP > X-Forwarded-For > X-Real-IP
-    const userIP = cfConnectingIP || xForwardedFor || xRealIP || 'unknown';
+    // Also check for other possible IP headers
+    const xClientIP = request.headers.get('X-Client-IP');
+    const xForwarded = request.headers.get('X-Forwarded');
+    const forwardedFor = request.headers.get('Forwarded-For');
+    const forwarded = request.headers.get('Forwarded');
     
-    console.log(`User IP detected: ${userIP}`);
-    console.log(`IP Headers: CF-Connecting-IP=${cfConnectingIP}, X-Forwarded-For=${xForwardedFor}, X-Real-IP=${xRealIP}`);
+    // Priority order: CF-Connecting-IP > X-Forwarded-For > X-Real-IP > others
+    const userIP = cfConnectingIP || 
+                  xForwardedFor || 
+                  xRealIP || 
+                  xClientIP ||
+                  xForwarded ||
+                  forwardedFor ||
+                  forwarded ||
+                  'unknown';
     
-    return userIP;
+    // If X-Forwarded-For contains multiple IPs, take the first one
+    let finalIP = userIP;
+    if (userIP && userIP.includes(',')) {
+      finalIP = userIP.split(',')[0].trim();
+    }
+    
+    console.log(`User IP detected: ${finalIP}`);
+    console.log(`IP Headers: CF-Connecting-IP=${cfConnectingIP}, X-Forwarded-For=${xForwardedFor}, X-Real-IP=${xRealIP}, X-Client-IP=${xClientIP}, X-Forwarded=${xForwarded}, Forwarded-For=${forwardedFor}, Forwarded=${forwarded}`);
+    
+    return finalIP;
   },
 
   /**
@@ -196,7 +226,9 @@ export default {
     const body = await request.json();
     
     // Extract user IP for location detection
-    const userIP = this.extractUserIP(request);
+    // Allow manual IP override for testing
+    const manualIP = body.manual_ip || null;
+    const userIP = manualIP || this.extractUserIP(request);
     
     // Get session ID from either URL params or request body
     const sessionId = url.searchParams.get('session_id') || body.session_id;
@@ -204,7 +236,10 @@ export default {
     if (!sessionId) {
       return new Response(JSON.stringify({ error: 'Session ID required' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
       });
     }
 
@@ -222,12 +257,16 @@ export default {
     if (!userMessage) {
       return new Response(JSON.stringify({ error: 'Message required' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
       });
     }
 
     console.log(`Processing message for session ${sessionId}: ${userMessage}`);
     console.log(`Streaming options:`, streamingOptions);
+    console.log(`User IP: ${userIP} ${manualIP ? '(manual override)' : ''}`);
 
     // Initialize managers and adaptive language system
     const sessionManager = new AdvancedSessionManager(env.CHAT_SESSIONS);
@@ -277,6 +316,52 @@ export default {
     };
 
     try {
+      // Get location information early for context
+      let locationInfo = null;
+      if (userIP && userIP !== 'unknown') {
+        try {
+          const { LocationPrayerService } = await import('./location-prayer-service.js');
+          const locationService = new LocationPrayerService();
+          const location = await locationService.getUserLocation(userIP);
+          locationInfo = {
+            ip: userIP,
+            city: location.city,
+            region: location.region,
+            country: location.country,
+            timezone: location.timezone,
+            latitude: location.lat,
+            longitude: location.lng,
+            source: location.source,
+            isDefault: location.isDefault || false
+          };
+          console.log('Location information retrieved:', locationInfo);
+        } catch (error) {
+          console.log('Location detection failed:', error.message);
+          // Even if location detection fails, we still want to continue with the request
+        }
+      } else {
+        console.log('No valid IP address for location detection, using default location');
+        try {
+          const { LocationPrayerService } = await import('./location-prayer-service.js');
+          const locationService = new LocationPrayerService();
+          const defaultLocation = locationService.getDefaultLocation();
+          locationInfo = {
+            ip: 'unknown',
+            city: defaultLocation.city,
+            region: defaultLocation.region,
+            country: defaultLocation.country,
+            timezone: defaultLocation.timezone,
+            latitude: defaultLocation.lat,
+            longitude: defaultLocation.lng,
+            source: defaultLocation.source,
+            isDefault: true
+          };
+          console.log('Default location information used:', locationInfo);
+        } catch (error) {
+          console.log('Failed to get default location:', error.message);
+        }
+      }
+
       // Check if streaming is enabled (default is true)
       if (streamingOptions.enableStreaming) {
         console.log('Using streaming response (default mode)');
@@ -288,11 +373,19 @@ export default {
           enhancedLanguageInfo, 
           streamingOptions,
           sessionManager,
-          userIP
+          userIP,
+          locationInfo // Pass location info to streaming handler
         );
       } else {
         console.log('Using direct response (streaming disabled)');
-        // Call Gemini API with direct response
+        // Process internet data if needed
+        const internetData = await geminiAPI.internetProcessor.processQuery(userMessage, {
+          sessionId,
+          languageInfo: enhancedLanguageInfo,
+          contextualPrompt
+        }, userIP);
+        
+        // Call Gemini API with direct response, now including location context
         const geminiResponse = await geminiAPI.generateResponse(
           [], 
           sessionId, 
@@ -300,30 +393,12 @@ export default {
           contextualPrompt, 
           enhancedLanguageInfo, 
           streamingOptions,
-          userIP
+          userIP,
+          locationInfo // Pass location info to Gemini API
         );
         
         // Process message and update session with intelligent memory
         const sessionData = await sessionManager.processMessage(sessionId, userMessage, geminiResponse);
-
-        // Get location information for response
-        let locationInfo = null;
-        if (userIP && userIP !== 'unknown') {
-          try {
-            const { LocationPrayerService } = await import('./src/location-prayer-service.js');
-            const locationService = new LocationPrayerService();
-            const location = await locationService.getUserLocation(userIP);
-            locationInfo = {
-              ip: userIP,
-              city: location.city,
-              country: location.country,
-              timezone: location.timezone,
-              source: location.source
-            };
-          } catch (error) {
-            console.log('Location detection failed:', error.message);
-          }
-        }
 
         // Prepare response with enhanced formatting
         const response = {
@@ -342,8 +417,8 @@ export default {
             response_length: geminiResponse.length,
             language_detected: enhancedLanguageInfo.detected_language,
             adaptation_type: enhancedLanguageInfo.adaptation_type,
-            internet_data_used: internetData.needsInternetData,
-            search_strategy: internetData.searchResults ? internetData.searchResults.searchStrategy : null
+            internet_data_used: internetData ? internetData.needsInternetData : false,
+            search_strategy: internetData && internetData.searchResults ? internetData.searchResults.searchStrategy : null
           }
         };
 
@@ -367,7 +442,8 @@ export default {
         reply: "Sorry, I'm having trouble processing your request right now. Please try again.",
         error: error.message,
         streaming: streamingOptions.enableStreaming,
-        api_keys_available: apiKeys.length
+        api_keys_available: apiKeys.length,
+        language_info: enhancedLanguageInfo // Include language info in error response
       };
 
       return new Response(JSON.stringify(errorResponse), {
@@ -390,13 +466,14 @@ export default {
    * @param {Object} streamingOptions - Streaming options
    * @param {AdvancedSessionManager} sessionManager - Session manager
    * @param {string} userIP - User's IP address for location detection
+   * @param {Object} locationInfo - User's location information
    * @returns {Response} Streaming response
    */
-  async handleStreamingResponse(geminiAPI, sessionId, userMessage, contextualPrompt, enhancedLanguageInfo, streamingOptions, sessionManager, userIP) {
+  async handleStreamingResponse(geminiAPI, sessionId, userMessage, contextualPrompt, enhancedLanguageInfo, streamingOptions, sessionManager, userIP, locationInfo) {
     try {
       console.log(`Starting streaming response for session ${sessionId} with ${geminiAPI.apiKeyManager.getAvailableKeyCount()} API keys`);
       
-      // Generate streaming response using multiple API keys
+      // Generate streaming response using multiple API keys, now including location context
       const stream = await geminiAPI.generateResponse(
         [], 
         sessionId, 
@@ -404,7 +481,8 @@ export default {
         contextualPrompt, 
         enhancedLanguageInfo, 
         streamingOptions,
-        userIP
+        userIP,
+        locationInfo // Pass location info to Gemini API
       );
       
       // Capture methods to avoid 'this' context issues
@@ -437,6 +515,7 @@ export default {
                     streaming: true,
                     timestamp: new Date().toISOString(),
                     language_info: enhancedLanguageInfo,
+                    location_info: locationInfo, // Include location info in metadata
                     chunk_info: {
                       size: streamingOptions.chunkSize,
                       delay: streamingOptions.delay
@@ -462,7 +541,8 @@ export default {
                 session_id: sessionId,
                 response_length: fullResponse.length,
                 timestamp: new Date().toISOString(),
-                message: 'Response completed successfully ✅'
+                message: 'Response completed successfully ✅',
+                location_info: locationInfo // Include location info in completion
               }
             })}\n\n`;
             controller.enqueue(new TextEncoder().encode(completionChunk));

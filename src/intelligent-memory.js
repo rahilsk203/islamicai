@@ -645,49 +645,77 @@ export class IntelligentMemory {
     };
   }
 
-  // DSA: Enhanced important info extraction with better algorithms
-  extractImportantInfo(message, conversationHistory) {
-    // DSA: Use advanced algorithms for better extraction
+  // Extract important information from user message for better context retention
+  extractImportantInfo(userMessage, conversationHistory) {
     const importantInfo = {
-      userPreferences: this.extractUserPreferences(message),
-      islamicTopics: this.extractIslamicTopics(message),
-      emotionalContext: this.analyzeEmotionalState(message),
-      learningPatterns: this.analyzeLearningPatterns(conversationHistory),
-      keyFacts: this.extractKeyFacts(message),
-      // DSA: Enhanced extraction
-      conversationThemes: this._extractConversationThemes(conversationHistory),
-      userIntent: this._analyzeUserIntent(message),
-      contextShift: this._detectContextShift(conversationHistory, message),
-      complexityLevel: this._assessComplexity(message, conversationHistory)
+      islamicTopics: [],
+      keyFacts: [],
+      userPreferences: {},
+      emotionalContext: 'neutral',
+      learningPatterns: {}
     };
-
+    
+    // Extract Islamic topics
+    importantInfo.islamicTopics = this.extractIslamicTopics(userMessage);
+    
+    // Extract key facts (names, locations, family members, etc.)
+    this.extractKeyFacts(userMessage, importantInfo.keyFacts);
+    
+    // Extract user preferences
+    this.extractUserPreferences(userMessage, importantInfo.userPreferences);
+    
+    // Extract emotional context
+    importantInfo.emotionalContext = this.extractEmotionalContext(userMessage);
+    
+    // Extract learning patterns
+    this.extractLearningPatterns(userMessage, conversationHistory, importantInfo.learningPatterns);
+    
     return importantInfo;
   }
 
-  extractUserPreferences(message) {
-    const preferences = {};
+  // Extract key facts for better personalization and context retention
+  extractKeyFacts(message, keyFacts) {
+    // Extract names
+    const nameRegex = /(?:my name is|i am|main hu|mera naam|mujhe bolte|mera nam)(?:\s+)([a-zA-Z\u0900-\u097F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+)/i;
+    const nameMatch = message.match(nameRegex);
+    if (nameMatch) {
+      keyFacts.push({
+        type: 'name',
+        value: nameMatch[1].trim(),
+        priority: 3
+      });
+    }
     
-    // Islamic school preference
-    if (message.includes('hanafi') || message.includes('hanafi school')) {
-      preferences.fiqhSchool = 'hanafi';
-    } else if (message.includes('shafi') || message.includes('shafi school')) {
-      preferences.fiqhSchool = 'shafi';
-    } else if (message.includes('maliki') || message.includes('maliki school')) {
-      preferences.fiqhSchool = 'maliki';
-    } else if (message.includes('hanbali') || message.includes('hanbali school')) {
-      preferences.fiqhSchool = 'hanbali';
+    // Extract family mentions
+    const familyRegex = /(maa|papa|bhai|sister|behan|family|parivar|ghar|home|grih)/i;
+    if (familyRegex.test(message)) {
+      keyFacts.push({
+        type: 'family',
+        value: message,
+        priority: 2
+      });
     }
-
-    // Response style preference
-    if (message.includes('detailed') || message.includes('explain more') || message.includes('in detail')) {
-      preferences.responseStyle = 'detailed';
-    } else if (message.includes('brief') || message.includes('short') || message.includes('concise')) {
-      preferences.responseStyle = 'brief';
-    } else {
-      preferences.responseStyle = 'balanced';
+    
+    // Extract health/well-being mentions
+    const healthRegex = /(thik|fine|well|sick|ill|bimar|healthy|fit)/i;
+    if (healthRegex.test(message)) {
+      keyFacts.push({
+        type: 'health',
+        value: message,
+        priority: 2
+      });
     }
-
-    return preferences;
+    
+    // Extract location mentions
+    const locationRegex = /(?:i am from|main (?:hu|huun|hoon) from|mera (?:grih|ghar|sheher)|i live in|main (?:rehta|rehti) hu)(?:\s+)([a-zA-Z\u0900-\u097F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+)/i;
+    const locationMatch = message.match(locationRegex);
+    if (locationMatch) {
+      keyFacts.push({
+        type: 'location',
+        value: locationMatch[1].trim(),
+        priority: 2
+      });
+    }
   }
 
   extractIslamicTopics(message) {
@@ -715,7 +743,33 @@ export class IntelligentMemory {
     return topics;
   }
 
-  analyzeEmotionalState(message) {
+  extractUserPreferences(message, preferences) {
+    const lowerMessage = message.toLowerCase();
+    
+    // Islamic school preference
+    if (lowerMessage.includes('hanafi') || lowerMessage.includes('hanafi school')) {
+      preferences.fiqhSchool = 'hanafi';
+    } else if (lowerMessage.includes('shafi') || lowerMessage.includes('shafi school')) {
+      preferences.fiqhSchool = 'shafi';
+    } else if (lowerMessage.includes('maliki') || lowerMessage.includes('maliki school')) {
+      preferences.fiqhSchool = 'maliki';
+    } else if (lowerMessage.includes('hanbali') || lowerMessage.includes('hanbali school')) {
+      preferences.fiqhSchool = 'hanbali';
+    }
+
+    // Response style preference
+    if (lowerMessage.includes('detailed') || lowerMessage.includes('explain more') || lowerMessage.includes('in detail')) {
+      preferences.responseStyle = 'detailed';
+    } else if (lowerMessage.includes('brief') || lowerMessage.includes('short') || lowerMessage.includes('concise')) {
+      preferences.responseStyle = 'brief';
+    } else {
+      preferences.responseStyle = 'balanced';
+    }
+
+    return preferences;
+  }
+
+  extractEmotionalContext(message) {
     const emotionalIndicators = {
       confused: ['confused', 'don\'t understand', 'explain', 'help', 'can\'t understand'],
       sad: ['sad', 'depressed', 'worried', 'anxious', 'upset', 'troubled'],
@@ -735,14 +789,7 @@ export class IntelligentMemory {
     return 'neutral';
   }
 
-  analyzeLearningPatterns(conversationHistory) {
-    const patterns = {
-      questionTypes: [],
-      preferredTopics: [],
-      responseLength: 'medium',
-      complexityLevel: 'intermediate'
-    };
-
+  extractLearningPatterns(message, conversationHistory, patterns) {
     if (conversationHistory.length === 0) return patterns;
 
     // Analyze question types
@@ -771,187 +818,7 @@ export class IntelligentMemory {
     return patterns;
   }
 
-  extractKeyFacts(message) {
-    const facts = [];
-    const lowerMessage = message.toLowerCase();
-    
-    // Enhanced name extraction patterns with better validation
-    const namePatterns = [
-      /(?:my name is|i am|call me|mera naam|mujhe|main)\s+([a-zA-Z\u0900-\u097F\u0980-\u09FF\s]+)/i,
-      /(?:name|naam)\s*:?\s*([a-zA-Z\u0900-\u097F\u0980-\u09FF\s]+)/i,
-      /(?:i'm|main)\s+([a-zA-Z\u0900-\u097F\u0980-\u09FF\s]+)/i,
-      /(?:assalamu alaikum|salam)\s+([a-zA-Z\u0900-\u097F\u0980-\u09FF\s]+)/i,
-      /([a-zA-Z\u0900-\u097F\u0980-\u09FF]+)\s+(?:bhai|sister|brother|sister|aap|tum)/i
-    ];
-    
-    for (const pattern of namePatterns) {
-      const nameMatch = message.match(pattern);
-      if (nameMatch) {
-        const name = nameMatch[1].trim();
-        // Clean up the name (remove common words)
-        const cleanName = name.replace(/\b(?:hai|hain|ho|hun|hu|main|mera|mujhe|call|me|is|am|i|hello|hi)\b/gi, '').trim();
-        if (cleanName && cleanName.length > 1 && cleanName.length < 30) {
-          facts.push({
-            type: 'name',
-            value: cleanName,
-            priority: this.memoryPriority.HIGH
-          });
-          break; // Only extract first valid name
-        }
-      }
-    }
-
-    // Enhanced location extraction
-    const locationPatterns = [
-      /(?:i live in|i am from|i'm from|main rehta hun|main se hun)\s+([a-zA-Z\u0900-\u097F\u0980-\u09FF\s,]+)/i,
-      /(?:location|jagah|place)\s*:?\s*([a-zA-Z\u0900-\u097F\u0980-\u09FF\s,]+)/i
-    ];
-    
-    for (const pattern of locationPatterns) {
-      const locationMatch = message.match(pattern);
-      if (locationMatch) {
-        const location = locationMatch[1].trim();
-        const cleanLocation = location.replace(/\b(?:main|hun|se|in|from|live|am|i'm)\b/gi, '').trim();
-        if (cleanLocation && cleanLocation.length > 1 && cleanLocation.length < 50) {
-          facts.push({
-            type: 'location',
-            value: cleanLocation,
-            priority: this.memoryPriority.MEDIUM
-          });
-          break;
-        }
-      }
-    }
-
-    // Extract specific Islamic knowledge requests
-    if (lowerMessage.includes('surah') && (lowerMessage.includes('verse') || lowerMessage.includes('ayah'))) {
-      const surahMatch = message.match(/surah\s+([a-zA-Z0-9\s]+)/i);
-      if (surahMatch) {
-        facts.push({
-          type: 'quran_reference',
-          value: surahMatch[1].trim(),
-          priority: this.memoryPriority.HIGH
-        });
-      }
-    }
-
-    // Extract dua requests
-    if (lowerMessage.includes('dua') || lowerMessage.includes('supplication')) {
-      facts.push({
-        type: 'dua_request',
-        value: 'user requested dua',
-        priority: this.memoryPriority.MEDIUM
-      });
-    }
-
-    return facts;
-  }
-
   generateMemoryId() {
     return 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
   }
-
-  // DSA: Extract conversation themes
-  _extractConversationThemes(conversationHistory) {
-    if (conversationHistory.length === 0) return [];
-    
-    // Get all user messages
-    const userMessages = conversationHistory
-      .filter(msg => msg.role === 'user')
-      .map(msg => msg.content);
-    
-    if (userMessages.length === 0) return [];
-    
-    // Extract topics from all messages
-    const allTopics = userMessages.flatMap(message => 
-      this.extractIslamicTopics(message)
-    );
-    
-    // Count topic frequency
-    const topicCounts = {};
-    allTopics.forEach(topic => {
-      topicCounts[topic] = (topicCounts[topic] || 0) + 1;
-    });
-    
-    // Return most frequent topics
-    return Object.entries(topicCounts)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 3)
-      .map(([topic]) => topic);
-  }
-
-  // DSA: Analyze user intent with better algorithms
-  _analyzeUserIntent(message) {
-    const lowerMessage = message.toLowerCase();
-    
-    // Enhanced intent detection
-    const intents = {
-      question: /(\bwhat\b|\bwhy\b|\bhow\b|\bwhen\b|\bwhere\b|\bwhich\b|\bwho\b|\?)/.test(lowerMessage),
-      explanation: /(\bexplain\b|\bdescribe\b|\btell me\b|\bhow does\b)/.test(lowerMessage),
-      request: /(\bplease\b|\bcould you\b|\bwould you\b|\bcan you\b|\bi need\b|\bi want\b)/.test(lowerMessage),
-      debate: /(\bprove\b|\bargue\b|\bdisagree\b|\bchallenge\b|\bdebate\b)/.test(lowerMessage),
-      emotional: /(\bsad\b|\bupset\b|\bconfused\b|\bfrustrated\b|\bgrateful\b|\bthank\b)/.test(lowerMessage)
-    };
-    
-    // Return primary intent
-    for (const [intent, isMatch] of Object.entries(intents)) {
-      if (isMatch) return intent;
-    }
-    
-    return 'general';
-  }
-
-  // DSA: Detect context shift with better algorithms
-  _detectContextShift(conversationHistory, newMessage) {
-    if (conversationHistory.length < 2) return false;
-    
-    // Get last user message
-    const lastUserMessages = conversationHistory
-      .filter(msg => msg.role === 'user')
-      .slice(-2)
-      .map(msg => msg.content);
-    
-    if (lastUserMessages.length === 0) return false;
-    
-    const lastMessage = lastUserMessages[lastUserMessages.length - 1];
-    
-    // Extract topics from both messages
-    const lastTopics = this.extractIslamicTopics(lastMessage);
-    const newTopics = this.extractIslamicTopics(newMessage);
-    
-    // Calculate topic overlap
-    const commonTopics = lastTopics.filter(topic => newTopics.includes(topic));
-    const overlapRatio = commonTopics.length / Math.max(lastTopics.length, newTopics.length);
-    
-    // Context shift if less than 30% overlap
-    return overlapRatio < 0.3;
-  }
-
-  // DSA: Assess complexity with better metrics
-  _assessComplexity(message, conversationHistory) {
-    // Message complexity
-    const wordCount = message.split(/\s+/).length;
-    const sentenceCount = message.split(/[.!?]+/).length;
-    const avgWordsPerSentence = wordCount / sentenceCount;
-    
-    // Conversation history complexity
-    const historyLength = conversationHistory.length;
-    const uniqueTopics = new Set(
-      conversationHistory
-        .filter(msg => msg.role === 'user')
-        .flatMap(msg => this.extractIslamicTopics(msg.content))
-    ).size;
-    
-    // Combined complexity score
-    let score = 0;
-    if (wordCount > 50) score += 1;
-    if (avgWordsPerSentence > 20) score += 1;
-    if (historyLength > 20) score += 1;
-    if (uniqueTopics > 3) score += 1;
-    
-    if (score >= 3) return 'high';
-    if (score >= 1) return 'medium';
-    return 'low';
-  }
-
 }

@@ -59,7 +59,11 @@ export class InternetDataProcessor {
       enableAISearch: false,
       maxSearchResults: 3, // Reduced from 8 for faster results
       searchTimeout: 3000, // Reduced from 8000 for faster timeout
-      cacheTTL: 15 * 60 * 1000 // 15 minutes cache for frequently requested data
+      cacheTTL: 15 * 60 * 1000, // 15 minutes cache for frequently requested data
+      
+      // NEW: Rely more on Gemini's built-in Google Search
+      relyOnGeminiSearch: true, // When true, reduce redundant processing
+      minConfidenceForGeminiSearch: 0.7 // Minimum confidence to trigger Gemini search
     };
     
     // Simple in-memory cache for frequently requested data
@@ -133,6 +137,38 @@ export class InternetDataProcessor {
     try {
       console.log('Processing query for internet data needs:', userMessage);
       
+      // NEW: If relying on Gemini search, do minimal processing
+      if (this.processingRules.relyOnGeminiSearch) {
+        console.log('Relying on Gemini built-in Google Search, doing minimal processing');
+        
+        // Check if this is a high-confidence query that should trigger Google Search
+        const shouldTriggerSearch = this.shouldTriggerGeminiSearch(userMessage);
+        
+        if (shouldTriggerSearch) {
+          console.log('High-confidence query, will trigger Gemini Google Search');
+          
+          // Return a minimal result that indicates Gemini should do the search
+          return {
+            needsInternetData: true,
+            reason: 'gemini_search_recommended',
+            data: null,
+            enhancedPrompt: `USER QUERY REQUIRES REAL-TIME DATA: ${userMessage}\nPlease use Google Search to find current information about this topic.`,
+            searchResults: null,
+            fromGeminiSearch: true
+          };
+        } else {
+          // For low-confidence queries, do minimal processing
+          console.log('Low-confidence query, minimal processing');
+          return {
+            needsInternetData: false,
+            reason: 'low_confidence_for_search',
+            data: null,
+            enhancedPrompt: ''
+          };
+        }
+      }
+      
+      // Existing processing logic for when not relying on Gemini search
       // Check cache first for performance
       const cachedResult = this.checkCache(userMessage);
       if (cachedResult) {
@@ -1126,5 +1162,43 @@ Source: IslamicAI Location Service`;
     enhancedPrompt += `- Be sensitive to the emotional impact of news on Muslim communities\n\n`;
     
     return enhancedPrompt;
+  }
+
+  /**
+   * Determine if a query should trigger Gemini's Google Search
+   * @param {string} userMessage - User's message
+   * @returns {boolean} Whether to trigger Google Search
+   */
+  shouldTriggerGeminiSearch(userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // High-confidence triggers for Google Search
+    const highConfidenceTriggers = [
+      // Current events and news
+      'latest news', 'current news', 'breaking news', 'today news', 'what happened',
+      'recent events', 'latest updates', 'current events', 'news today',
+      
+      // Financial data
+      'gold price', 'silver price', 'oil price', 'currency rate', 'exchange rate',
+      'stock market', 'stock price', 'share price', 'market update',
+      
+      // Current dates and times
+      'today date', 'current date', 'what time', 'current time',
+      
+      // Weather
+      'weather today', 'current weather', 'temperature today',
+      
+      // Technology
+      'latest technology', 'new technology', 'tech news', 'latest gadgets',
+      
+      // Sports
+      'latest sports', 'sports news', 'match result', 'game score',
+      
+      // Islamic current events
+      'islamic news', 'muslim news', 'ummah news', 'current islamic events'
+    ];
+    
+    // Check if any high-confidence trigger is present
+    return highConfidenceTriggers.some(trigger => lowerMessage.includes(trigger));
   }
 }

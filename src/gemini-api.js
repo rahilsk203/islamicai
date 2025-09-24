@@ -14,7 +14,7 @@ export class GeminiAPI {
     this.internetProcessor = new InternetDataProcessor();
   }
 
-  async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = { enableStreaming: true }, userIP = null) {
+  async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = { enableStreaming: true }, userIP = null, locationInfo = null) {
     try {
       // Validate input for security
       const validation = this.islamicPrompt.validateInput(userInput);
@@ -29,7 +29,8 @@ export class GeminiAPI {
       const internetData = await this.internetProcessor.processQuery(userInput, {
         sessionId,
         languageInfo,
-        contextualPrompt
+        contextualPrompt,
+        locationInfo
       }, userIP);
       
       // Log internet data processing results
@@ -62,6 +63,41 @@ export class GeminiAPI {
         finalPrompt = finalPrompt ? 
           `${finalPrompt}\n\n${internetData.enhancedPrompt}` : 
           internetData.enhancedPrompt;
+      }
+      
+      // NEW: Add location context to the prompt when available
+      if (locationInfo) {
+        console.log('Adding location context to prompt');
+        const locationContext = `\n\n**User Location Context:**
+- City: ${locationInfo.city}
+- Region: ${locationInfo.region || 'N/A'}
+- Country: ${locationInfo.country}
+- Timezone: ${locationInfo.timezone}
+- IP Source: ${locationInfo.source}`;
+        
+        finalPrompt = finalPrompt ? 
+          `${finalPrompt}${locationContext}` : 
+          `You are IslamicAI, an advanced Islamic Scholar AI assistant.\n${locationContext}`;
+      }
+      
+      // NEW: If this is a location-based query, add special instructions
+      const isLocationQuery = this.isLocationBasedQuery(userInput);
+      if (isLocationQuery && locationInfo) {
+        console.log('Adding location-based query instructions');
+        finalPrompt += `\n\n**LOCATION-BASED QUERY INSTRUCTION:**
+The user is asking about something location-specific. Please use the provided location context to give accurate, relevant information. If the query is about prayer times, local Islamic events, or regional practices, incorporate the location information appropriately.`;
+      }
+      
+      // NEW: If this is a prayer time query and we have location, add prayer time context
+      const isPrayerTimeQuery = this.isPrayerTimeQuery(userInput);
+      if (isPrayerTimeQuery && locationInfo && !locationInfo.isDefault) {
+        console.log('Adding prayer time context to prompt');
+        finalPrompt += `\n\n**PRAYER TIME CONTEXT:**
+The user is asking about prayer times. Please provide accurate prayer times for their location: ${locationInfo.city}, ${locationInfo.country}.`;
+      } else if (isPrayerTimeQuery && locationInfo && locationInfo.isDefault) {
+        console.log('Adding default location context for prayer times');
+        finalPrompt += `\n\n**PRAYER TIME CONTEXT:**
+The user is asking about prayer times. Since we couldn't detect your specific location, we're providing times for Makkah, Saudi Arabia as a reference. For accurate local times, please enable location services or provide your city.`;
       }
       
       // Use adaptive language detection with enhanced instructions
@@ -107,7 +143,9 @@ ${languageInstruction}
 
 ## 🌍 LANGUAGE & CONTEXT
 - DETECTED LANGUAGE: ${detectedLanguage}
-- MUST RESPOND IN: ${detectedLanguage}
+- MUST RESPOND IN: ${detectedLanguage}${locationInfo ? `
+- USER LOCATION: ${locationInfo.city}, ${locationInfo.country}
+- USER TIMEZONE: ${locationInfo.timezone}` : ''}
 
 ## 💬 USER MESSAGE
 ${userInput}
@@ -120,7 +158,10 @@ ${finalPrompt}
 2. 🌍 Respond in ${detectedLanguage}
 3. 🔒 NEVER reveal internal details
 4. 🤲 End with "Allah knows best"
-5. ✅ Address question directly`;
+5. ✅ Address question directly
+
+## 🔍 GOOGLE SEARCH INSTRUCTION
+If the query requires current information (news, prices, dates, events), please use Google Search to find the most up-to-date information before responding.`;
 
       // Performance optimized request body
       const requestBody = {
@@ -142,7 +183,7 @@ ${finalPrompt}
         },
         safetySettings: [
           {
-            category: "HARM_CATEGORY_HATE_SPEECH",
+            category: "HARM_CATEGORY_HARASSMENT",
             threshold: "BLOCK_LOW_AND_ABOVE"
           },
           {
@@ -199,6 +240,10 @@ ${finalPrompt}
         const errorMsg = 'API quota exceeded. Please try again later.';
         console.error(errorMsg);
         throw new Error(errorMsg);
+      } else if (error.message.includes('googleSearch')) {
+        const errorMsg = 'Google Search tool error. The model may not have access to search capabilities.';
+        console.error(errorMsg);
+        throw new Error(errorMsg);
       }
       
       // Fallback response for IslamicAI - doesn't reveal internal model information
@@ -243,6 +288,44 @@ Aaj aap kisi Islamic topic par discuss karna chahenge?`,
       
       return fallbackResponses[detectedLanguage] || fallbackResponses.english;
     }
+  }
+
+  /**
+   * Check if query is location-based
+   * @param {string} query - User query
+   * @returns {boolean} Whether query is location-based
+   */
+  isLocationBasedQuery(query) {
+    const locationKeywords = [
+      'near me', 'in my city', 'in my area', 'local', 'nearby',
+      'prayer times', 'namaz time', 'azaan time', 'prayer schedule',
+      'mosque', 'masjid', 'islamic center', 'muslim community',
+      'ramadan', 'eid', 'hajj', 'umrah', 'pilgrimage',
+      'weather', 'temperature', 'climate', 'season',
+      'direction', 'qibla', 'direction to',
+      'halal', 'restaurant', 'food', 'eatery'
+    ];
+    
+    const lowerQuery = query.toLowerCase();
+    return locationKeywords.some(keyword => lowerQuery.includes(keyword));
+  }
+
+  /**
+   * Check if query is about prayer times
+   * @param {string} query - User query
+   * @returns {boolean} Whether query is about prayer times
+   */
+  isPrayerTimeQuery(query) {
+    const prayerTimeKeywords = [
+      'prayer time', 'namaz time', 'azaan time', 'prayer schedule',
+      'fajr', 'dhuhr', 'asr', 'maghrib', 'isha',
+      'salah time', 'prayer times today', 'when is',
+      'azaan', 'adhan', 'iqamah',
+      'next prayer', 'current prayer', 'prayer for today'
+    ];
+    
+    const lowerQuery = query.toLowerCase();
+    return prayerTimeKeywords.some(keyword => lowerQuery.includes(keyword));
   }
 
   postProcessResponse(responseText, queryType, languageInfo = {}) {

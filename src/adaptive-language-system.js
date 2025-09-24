@@ -7,94 +7,56 @@ export class AdaptiveLanguageSystem {
     this.userPreferences = new Map();
     this.contextMemory = new Map();
     
-    // Language detection patterns with optimized scoring
-    this.languagePatterns = {
-      // Hinglish patterns (highest priority for mixed languages)
+    // Enhanced language detection with DSA algorithms
+    this.languageModels = {
+      // Hinglish model with enhanced pattern matching
       hinglish: {
-        patterns: [
-          /(?:main|aap|tum|ham|ye|wo)\s+[a-zA-Z]+\s+(?:kar|karte|karta|karti)/gi,
-          /[a-zA-Z]+\s+(?:ke|ki|ka)\s+(?:liye|mein|se|ko|par)/gi,
-          /(?:kasa|kon|kaya|kya|kyun|kahan|kab|kaise)\s+(?:hai|hain|ho|hun)/gi,
-          /(?:assalamu alaikum|salam|insha allah|mashallah|subhanallah|alhamdulillah)/gi,
-          /(?:bhai|sister|brother|aap|tum|main|mera|mujhe)\s+[a-zA-Z]+/gi,
-          /(?:current|time|waqt|samay|abhi|now)\s+(?:time|waqt|samay|kya|hai)/gi,
-          /(?:kya|kyun|kahan|kab|kaise|kitna|kitni|kitne)\s+(?:time|waqt|samay)/gi,
-          /(?:hoon|ho|hai|hain|hun|kar|karo|kare|karna|karte|karta|karti|kari)/gi,
-          /(?:kya|kyun|kahan|kab|kaise|kitna|kitni|kitne|kis|kisi|kuch|kuchh)/gi,
-          /(?:hoon|hai|hoon|kar|karo|kare|karna|karte|karta|karti|kari|liye|se|mein|par)/gi
-        ],
-        keywords: [
-          'main', 'aap', 'tum', 'ham', 'ye', 'wo', 'kar', 'raha', 'hun', 'hain', 'hai',
-          'ke', 'ki', 'ka', 'mein', 'se', 'ko', 'par', 'liye', 'aur', 'ya', 'lekin',
-          'kyunki', 'jab', 'tab', 'agar', 'to', 'phir', 'abhi', 'usne', 'hamne', 'aapne',
-          'tuu', 'kasa', 'kon', 'kaya', 'saktaa', 'sakte', 'sakti', 'sakta', 'hoon', 'ho',
-          'hoi', 'hoa', 'hoiye', 'hoja', 'hojao', 'hojaye', 'kya', 'kyun', 'kahan', 'kab',
-          'kaise', 'kitna', 'kitni', 'kitne', 'bhai', 'sister', 'brother', 'time', 'waqt',
-          'samay', 'current', 'now', 'abhi', 'time', 'waqt', 'samay', 'hoon', 'ho', 'hun',
-          'hain', 'hai', 'karo', 'kare', 'karna', 'karte', 'karta', 'karti', 'kari', 'liye',
-          'se', 'mein', 'par', 'kis', 'kisi', 'kuch', 'kuchh', 'assalamu', 'alaikum', 'salam',
-          'islamic', 'quran', 'hadith', 'tafseer', 'fiqh', 'seerah', 'dua', 'namaz', 'roza',
-          'zakat', 'hajj', 'masjid', 'imam', 'allah', 'muhammad', 'prophet', 'islam'
-        ],
-        weight: 3.5, // Increased weight for better detection
+        // DSA: Trie-based pattern matching for efficient word lookup
+        patterns: this.buildTrie([
+          'main', 'aap', 'tum', 'ham', 'ye', 'wo', 'kar', 'ke', 'ki', 'ka', 
+          'mein', 'se', 'ko', 'par', 'aur', 'ya', 'lekin', 'kyunki', 'kya', 
+          'kyun', 'kahan', 'kab', 'kaise', 'kitna', 'kitni', 'kitne', 'bhai', 
+          'sister', 'brother', 'time', 'waqt', 'samay', 'current', 'now', 'abhi',
+          'tuu', 'bataa', 'sakte', 'hai', 'kaya', 'halat', 'thik', 'hoon', 'hun',
+          'hain', 'kasa', 'assalamu', 'alaikum', 'salam', 'allah', 'islam', 'quran'
+        ]),
+        // DSA: N-gram analysis for better context detection
+        ngrams: {
+          2: ['ka', 'ki', 'ke', 'me', 'se', 'ko', 'pa', 'le', 'ky', 'ka'],
+          3: ['kar', 'ke ', ' me', ' se', ' ko', 'par', 'aur', 'kya', 'kyu', 'kab']
+        },
+        weight: 4.0, // Increased weight for better detection
         script: 'mixed'
       },
       
-      // Hindi patterns
+      // Hindi model with Devanagari script detection
       hindi: {
-        patterns: [
-          /[\u0900-\u097F]+/g,
-          /(?:है|हैं|का|के|की|में|से|को|पर|अल्लाह|इस्लाम|कुरान|हदीस)/gi
-        ],
-        keywords: [
-          'है', 'हैं', 'का', 'के', 'की', 'में', 'से', 'को', 'पर', 'अल्लाह', 'इस्लाम',
-          'कुरान', 'हदीस', 'नमाज़', 'रोज़ा', 'ज़कात', 'हज', 'मस्जिद', 'इमाम', 'मौलाना'
-        ],
-        weight: 2.8,
+        // DSA: Unicode range detection for Devanagari script
+        unicodeRanges: [[0x0900, 0x097F]],
+        // DSA: Common Hindi words with frequency analysis
+        commonWords: ['है', 'हैं', 'का', 'के', 'की', 'में', 'से', 'को', 'पर', 
+                     'अल्लाह', 'इस्लाम', 'कुरान', 'हदीस', 'नमाज़', 'रोज़ा'],
+        weight: 3.5,
         script: 'devanagari'
       },
       
-      // English patterns
+      // English model
       english: {
-        patterns: [
-          /(?:the|and|is|are|was|were|have|has|had|will|would|can|could|should|may|might)\s+/gi,
-          /(?:this|that|these|those|what|when|where|why|how|who|which|with|from|for|about)\s+/gi,
-          /\b(?:do|does|did|am|are|is|was|were|be|been|being)\b/gi,
-          /\b(?:how\s+do|what\s+is|where\s+is|when\s+is|why\s+is|who\s+is)\b/gi
-        ],
-        keywords: [
-          'islam', 'quran', 'hadith', 'prayer', 'fasting', 'zakat', 'hajj', 'mosque',
-          'imam', 'allah', 'muhammad', 'prophet', 'islamic', 'muslim', 'assalamu', 'alaikum',
-          'how', 'what', 'where', 'when', 'why', 'who', 'which', 'perform', 'do', 'does'
-        ],
-        weight: 2.0,
+        // DSA: Common English function words
+        functionWords: ['the', 'and', 'is', 'are', 'was', 'were', 'have', 'has', 'had', 
+                       'will', 'would', 'can', 'could', 'should', 'may', 'might', 'this',
+                       'that', 'these', 'those', 'what', 'when', 'where', 'why', 'how'],
+        weight: 2.5,
         script: 'latin'
       },
       
-      // Bengali patterns
-      bengali: {
-        patterns: [
-          /[\u0980-\u09FF]+/g,
-          /(?:ইসলাম|কুরআন|হাদিস|নামাজ|রোজা|জাকাত|হজ|মসজিদ|ইমাম|আল্লাহ)/gi
-        ],
-        keywords: [
-          'ইসলাম', 'কুরআন', 'হাদিস', 'নামাজ', 'রোজা', 'জাকাত', 'হজ', 'মসজিদ', 'ইমাম', 'আল্লাহ'
-        ],
-        weight: 2.5,
-        script: 'bengali'
-      },
-      
-      // Urdu patterns
+      // Urdu model
       urdu: {
-        patterns: [
-          /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+/g,
-          /(?:ہے|ہیں|کا|کے|کی|میں|سے|کو|پر|اللہ|اسلام|قرآن|حدیث)/gi
-        ],
-        keywords: [
-          'ہے', 'ہیں', 'کا', 'کے', 'کی', 'میں', 'سے', 'کو', 'پر', 'اللہ', 'اسلام',
-          'قرآن', 'حدیث', 'نماز', 'روزہ', 'زکات', 'حج', 'مسجد', 'امام'
-        ],
-        weight: 2.3,
+        // DSA: Unicode range detection for Arabic script (Urdu)
+        unicodeRanges: [[0x0600, 0x06FF], [0x0750, 0x077F]],
+        commonWords: ['ہے', 'ہیں', 'کا', 'کے', 'کی', 'میں', 'سے', 'کو', 'پر', 
+                     'اللہ', 'اسلام', 'قرآن', 'حدیث'],
+        weight: 3.0,
         script: 'arabic'
       }
     };
@@ -117,10 +79,6 @@ export class AdaptiveLanguageSystem {
         'english me bol', 'english mein bol', 'english me bolo', 'english mein bolo',
         'talk in english', 'use english', 'english language'
       ],
-      bengali: [
-        'bengali me bol', 'bengali mein bol', 'bengali me bolo', 'bengali mein bolo',
-        'বাংলায় বল', 'বাংলায় বলুন', 'বাংলায় উত্তর দিন'
-      ],
       urdu: [
         'urdu mein bol', 'urdu me bol', 'urdu mein bolo', 'urdu me bolo',
         'اردو میں بولیں', 'اردو میں جواب دیں'
@@ -134,9 +92,165 @@ export class AdaptiveLanguageSystem {
     // DSA: Priority queue for language adaptation decisions
     this.adaptationQueue = this.createPriorityQueue();
     
-    // Simplified learning parameters for faster processing
-    this.confidenceThreshold = 0.5;
-    this.minSamplesForLearning = 1;
+    // Enhanced learning parameters for better adaptation
+    this.confidenceThreshold = 0.6; // Increased threshold for more confident decisions
+    this.minSamplesForLearning = 2; // Need more samples for learning
+  }
+
+  /**
+   * DSA: Trie implementation for efficient pattern matching
+   */
+  buildTrie(words) {
+    const trie = { children: {}, isEnd: false };
+    
+    for (const word of words) {
+      let node = trie;
+      for (const char of word.toLowerCase()) {
+        if (!node.children[char]) {
+          node.children[char] = { children: {}, isEnd: false };
+        }
+        node = node.children[char];
+      }
+      node.isEnd = true;
+    }
+    
+    return trie;
+  }
+
+  /**
+   * DSA: Search word in trie
+   */
+  searchInTrie(trie, word) {
+    let node = trie;
+    for (const char of word.toLowerCase()) {
+      if (!node.children[char]) return false;
+      node = node.children[char];
+    }
+    return node.isEnd;
+  }
+
+  /**
+   * DSA: N-gram extraction for better language detection
+   */
+  extractNGrams(text, n) {
+    const ngrams = [];
+    for (let i = 0; i <= text.length - n; i++) {
+      ngrams.push(text.substring(i, i + n).toLowerCase());
+    }
+    return ngrams;
+  }
+
+  /**
+   * DSA: Unicode script detection
+   */
+  detectScriptByUnicode(text) {
+    const scripts = {
+      devanagari: 0,
+      arabic: 0,
+      latin: 0
+    };
+    
+    for (const char of text) {
+      const code = char.charCodeAt(0);
+      if (code >= 0x0900 && code <= 0x097F) {
+        scripts.devanagari++;
+      } else if ((code >= 0x0600 && code <= 0x06FF) || (code >= 0x0750 && code <= 0x077F)) {
+        scripts.arabic++;
+      } else if (code >= 0x0041 && code <= 0x007A) {
+        scripts.latin++;
+      }
+    }
+    
+    // Return the script with highest count
+    return Object.keys(scripts).reduce((a, b) => scripts[a] > scripts[b] ? a : b);
+  }
+
+  /**
+   * DSA: Enhanced language detection with multiple algorithms
+   */
+  analyzeLanguageStyle(message) {
+    if (!message || message.length === 0) {
+      return { language: 'english', confidence: 0 };
+    }
+
+    const scores = {};
+    const lowerMessage = message.toLowerCase();
+    
+    // DSA: Script-based detection
+    const script = this.detectScriptByUnicode(message);
+    if (script === 'devanagari') {
+      scores.hindi = 0.8;
+    } else if (script === 'arabic') {
+      scores.urdu = 0.8;
+    } else if (script === 'latin') {
+      scores.english = 0.3; // Base score for Latin script
+    }
+
+    // DSA: Pattern matching for Hinglish
+    let hinglishScore = 0;
+    const words = lowerMessage.split(/\s+/);
+    
+    // Check each word against Hinglish trie
+    for (const word of words) {
+      if (this.searchInTrie(this.languageModels.hinglish.patterns, word)) {
+        hinglishScore += 2; // Higher weight for exact matches
+      }
+    }
+    
+    // DSA: N-gram analysis for Hinglish
+    const bigrams = this.extractNGrams(lowerMessage, 2);
+    const trigrams = this.extractNGrams(lowerMessage, 3);
+    
+    let ngramScore = 0;
+    for (const bigram of bigrams) {
+      if (this.languageModels.hinglish.ngrams[2].includes(bigram)) {
+        ngramScore += 0.5;
+      }
+    }
+    
+    for (const trigram of trigrams) {
+      if (this.languageModels.hinglish.ngrams[3].includes(trigram)) {
+        ngramScore += 0.8;
+      }
+    }
+    
+    scores.hinglish = (hinglishScore + ngramScore) / words.length;
+    
+    // DSA: Function word detection for English
+    const englishWords = lowerMessage.match(/\b(the|and|is|are|was|were|have|has|had|will|would|can|could|should|may|might|this|that|these|those|what|when|where|why|how|who|which)\b/g);
+    if (englishWords) {
+      scores.english = (scores.english || 0) + (englishWords.length / words.length);
+    }
+    
+    // DSA: Hindi word detection
+    const hindiMatches = message.match(/[\u0900-\u097F]+/g);
+    if (hindiMatches) {
+      scores.hindi = (scores.hindi || 0) + (hindiMatches.length / words.length);
+    }
+    
+    // DSA: Urdu word detection
+    const urduMatches = message.match(/[\u0600-\u06FF\u0750-\u077F]+/g);
+    if (urduMatches) {
+      scores.urdu = (scores.urdu || 0) + (urduMatches.length / words.length);
+    }
+    
+    // Apply weights
+    if (scores.hinglish) scores.hinglish *= this.languageModels.hinglish.weight;
+    if (scores.hindi) scores.hindi *= this.languageModels.hindi.weight;
+    if (scores.english) scores.english *= this.languageModels.english.weight;
+    if (scores.urdu) scores.urdu *= this.languageModels.urdu.weight;
+    
+    // Find the language with highest score
+    const detectedLanguage = Object.keys(scores).length > 0 ? 
+      Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b) : 
+      'english';
+    
+    const confidence = scores[detectedLanguage] || 0.1;
+    
+    return {
+      language: detectedLanguage,
+      confidence: Math.min(confidence, 1.0)
+    };
   }
 
   /**
@@ -194,58 +308,12 @@ export class AdaptiveLanguageSystem {
   }
 
   /**
-   * Simplified adaptation method for faster processing
-   * @param {string} userMessage - User's message
-   * @param {string} sessionId - Session identifier
-   * @param {Object} context - Additional context
-   * @returns {Object} Language adaptation result
+   * Detect language in user message (backward compatibility)
+   * @param {string} message - User message
+   * @returns {Object} Language detection result
    */
-  adaptLanguage(userMessage, sessionId, context = {}) {
-    // Quick cache check
-    const cacheKey = `${sessionId}_${userMessage.length}`;
-    if (this.preferenceCache.has(cacheKey)) {
-      const cached = this.preferenceCache.get(cacheKey);
-      if (Date.now() - cached.timestamp < 60000) { // 1 minute cache
-        return cached.result;
-      }
-    }
-
-    // Detect explicit language switch commands
-    const switchCommand = this.detectSwitchCommand(userMessage);
-    if (switchCommand) {
-      this.updateUserPreference(sessionId, switchCommand.language, 1.0, 'explicit_command');
-      const result = {
-        detectedLanguage: switchCommand.language,
-        confidence: 1.0,
-        adaptationType: 'explicit_switch',
-        shouldAdapt: true,
-        userPreference: switchCommand.language,
-        switchCommand: switchCommand.command
-      };
-      
-      this.cacheResult(cacheKey, result);
-      return result;
-    }
-
-    // Simplified language analysis
-    const languageAnalysis = this.analyzeLanguageStyle(userMessage);
-    
-    // Get user's historical preferences
-    const userPreference = this.getUserPreference(sessionId);
-    
-    // Simplified adaptation logic
-    const adaptationResult = {
-      detectedLanguage: languageAnalysis.language,
-      confidence: languageAnalysis.confidence,
-      adaptationType: 'quick_detection',
-      shouldAdapt: languageAnalysis.confidence > 0.3,
-      userPreference: languageAnalysis.language
-    };
-
-    // Cache the result
-    this.cacheResult(cacheKey, adaptationResult);
-    
-    return adaptationResult;
+  detectLanguage(message) {
+    return this.analyzeLanguageStyle(message);
   }
 
   /**
@@ -272,42 +340,90 @@ export class AdaptiveLanguageSystem {
   }
 
   /**
-   * Simplified language analysis for faster processing
-   * @param {string} message - User message
-   * @returns {Object} Language analysis result
+   * Simplified adaptation method for faster processing
+   * @param {string} userMessage - User's message
+   * @param {string} sessionId - Session identifier
+   * @param {Object} context - Additional context
+   * @returns {Object} Language adaptation information
    */
-  analyzeLanguageStyle(message) {
-    const totalChars = message.length;
-    
-    if (totalChars === 0) {
-      return { language: 'english', confidence: 0 };
+  adaptLanguage(userMessage, sessionId, context = {}) {
+    // Check for explicit language switch commands first
+    const switchCommand = this.detectSwitchCommand(userMessage);
+    if (switchCommand) {
+      this.updateUserPreference(sessionId, switchCommand.language, 0.95, 'explicit_command');
+      return {
+        detectedLanguage: switchCommand.language,
+        confidence: 0.95,
+        shouldAdapt: true,
+        adaptationType: 'explicit_command',
+        userPreference: switchCommand.language,
+        learningData: { method: 'command', confidence: 0.95 }
+      };
     }
-
-    // Simplified scoring for each language
-    const scores = {};
     
-    // Quick Hinglish detection (highest priority)
-    const hinglishMatches = message.match(/(?:main|aap|tum|ham|ye|wo|kar|ke|ki|ka|mein|se|ko|par|aur|ya|lekin|kyunki|kya|kyun|kahan|kab|kaise|kitna|bhai|sister|brother|time|waqt|samay|current|now|abhi)/gi);
-    scores.hinglish = hinglishMatches ? (hinglishMatches.length * 2) / totalChars : 0;
+    // Get user's language preference from context or storage
+    const userPrefData = this.getUserPreference(sessionId);
+    const userPreference = userPrefData ? userPrefData.language : 'english';
     
-    // Quick Hindi detection
-    const hindiMatches = message.match(/[ऀ-ॿ]+/g);
-    scores.hindi = hindiMatches ? hindiMatches.length / totalChars : 0;
+    // Detect language in the current message
+    const detectionResult = this.analyzeLanguageStyle(userMessage);
     
-    // Quick English detection
-    const englishMatches = message.match(/(?:the|and|is|are|was|were|have|has|had|will|would|can|could|should|may|might|this|that|these|those|what|when|where|why|how|who|which)/gi);
-    scores.english = englishMatches ? englishMatches.length / totalChars : 0.1;
-
-    // Find the language with highest score
-    const detectedLanguage = Object.keys(scores).reduce((a, b) => 
-      scores[a] > scores[b] ? a : b
-    );
-
-    const confidence = Math.min(scores[detectedLanguage] * 100, 100);
-
+    // Check for conversational context clues (greetings, personal check-ins)
+    const isGreeting = this.isGreeting(userMessage);
+    const isPersonalCheckIn = this.isPersonalCheckIn(userMessage);
+    
+    // NEW: For high-confidence detections, respond in the detected language
+    if (detectionResult.confidence > 0.7) {
+      console.log(`High confidence language detection: ${detectionResult.language} (${detectionResult.confidence})`);
+      return {
+        detectedLanguage: detectionResult.language,
+        confidence: detectionResult.confidence,
+        shouldAdapt: true,
+        adaptationType: 'high_confidence_detection',
+        userPreference: detectionResult.language, // Respond in detected language
+        learningData: { method: 'high_confidence_detection', confidence: detectionResult.confidence }
+      };
+    }
+    
+    // If this is a greeting or personal check-in, maintain natural conversation flow
+    if (isGreeting || isPersonalCheckIn) {
+      // For natural conversation flow, respond in the same style as the user
+      return {
+        detectedLanguage: detectionResult.language,
+        confidence: detectionResult.confidence,
+        shouldAdapt: true,
+        adaptationType: 'conversational_flow',
+        userPreference: detectionResult.language,
+        learningData: { method: 'conversational_flow', confidence: detectionResult.confidence }
+      };
+    }
+    
+    // Use detected language if confidence is high
+    if (detectionResult.confidence > this.confidenceThreshold) {
+      // Update preference if consistently using the same language
+      if (detectionResult.language === userPreference || 
+          (context.previousMessages && this.isConsistentLanguage(context.previousMessages, detectionResult.language))) {
+        this.updateUserPreference(sessionId, detectionResult.language, detectionResult.confidence, 'automatic_detection');
+      }
+      
+      return {
+        detectedLanguage: detectionResult.language,
+        confidence: detectionResult.confidence,
+        shouldAdapt: detectionResult.language !== userPreference,
+        adaptationType: 'automatic_detection',
+        userPreference: detectionResult.language, // Respond in detected language
+        learningData: { method: 'detection', confidence: detectionResult.confidence }
+      };
+    }
+    
+    // Fall back to user preference
     return {
-      language: detectedLanguage,
-      confidence: confidence / 100
+      detectedLanguage: userPreference,
+      confidence: 0.7,
+      shouldAdapt: false,
+      adaptationType: 'user_preference',
+      userPreference: userPreference,
+      learningData: { method: 'preference', confidence: 0.7 }
     };
   }
 
@@ -579,4 +695,97 @@ export class AdaptiveLanguageSystem {
       }
     }
   }
+
+  // Check if message is a greeting
+  isGreeting(message) {
+    const greetings = [
+      'hello', 'hi', 'hey', 'assalamu alaikum', 'salam', 'namaste',
+      'kasa hai', 'kaise ho', 'how are you', 'kya haal hai',
+      'assalamu alaikum', 'salam', 'namaste', 'hello', 'hi'
+    ];
+    const lowerMessage = message.toLowerCase();
+    return greetings.some(greeting => lowerMessage.includes(greeting));
+  }
+
+  // Check if message is a personal check-in
+  isPersonalCheckIn(message) {
+    const checkIns = [
+      'kasa hai', 'kaise ho', 'how are you', 'kya haal hai', 'thik ho',
+      'how is everything', 'kaisa chal raha hai', 'how is life',
+      'kasa', 'kaise ho', 'kya haal hai'
+    ];
+    const lowerMessage = message.toLowerCase();
+    return checkIns.some(checkIn => lowerMessage.includes(checkIn));
+  }
+
+  // Check if language is consistent across previous messages
+  isConsistentLanguage(previousMessages, language) {
+    if (!previousMessages || previousMessages.length === 0) return false;
+    
+    // Count how many previous messages match the detected language
+    let matchCount = 0;
+    previousMessages.forEach(msg => {
+      const detection = this.analyzeLanguageStyle(msg.content);
+      if (detection.language === language) {
+        matchCount++;
+      }
+    });
+    
+    // If more than 60% of recent messages match, consider it consistent
+    return matchCount / previousMessages.length > 0.6;
+  }
+
+  /**
+   * Get response instructions based on detected language
+   * @param {string} detectedLanguage - Detected language
+   * @param {Object} adaptationInfo - Language adaptation information
+   * @returns {Object} Response instructions
+   */
+  getResponseInstructions(detectedLanguage, adaptationInfo = {}) {
+    const instructions = {
+      hinglish: {
+        instruction: "RESPOND IN HINGLISH ONLY (Hindi + English mix). Use natural Hinglish that mixes Hindi and English words as commonly spoken. Use Roman script for Hindi words.",
+        greeting: "Assalamu Alaikum!",
+        ending: "Allah sabse behtar jaanta hai 🤲",
+        style: "conversational",
+        adaptationType: adaptationInfo.adaptationType,
+        confidence: adaptationInfo.confidence,
+        userPreference: adaptationInfo.userPreference,
+        learningData: adaptationInfo.learningData
+      },
+      hindi: {
+        instruction: "RESPOND IN HINDI ONLY (हिंदी में). Use proper Hindi grammar and Islamic terminology in Hindi. Use Devanagari script.",
+        greeting: "अस्सलामु अलैकुम!",
+        ending: "अल्लाह सबसे बेहतर जानता है 🤲",
+        style: "formal",
+        adaptationType: adaptationInfo.adaptationType,
+        confidence: adaptationInfo.confidence,
+        userPreference: adaptationInfo.userPreference,
+        learningData: adaptationInfo.learningData
+      },
+      english: {
+        instruction: "RESPOND IN ENGLISH ONLY. Use proper English grammar and Islamic terminology in English.",
+        greeting: "Assalamu Alaikum!",
+        ending: "Allah knows best 🤲",
+        style: "formal",
+        adaptationType: adaptationInfo.adaptationType,
+        confidence: adaptationInfo.confidence,
+        userPreference: adaptationInfo.userPreference,
+        learningData: adaptationInfo.learningData
+      },
+      urdu: {
+        instruction: "RESPOND IN URDU ONLY (اردو میں). Use proper Urdu grammar and Islamic terminology in Urdu. Use Arabic script.",
+        greeting: "السلام علیکم!",
+        ending: "اللہ سب سے بہتر جانتا ہے 🤲",
+        style: "formal",
+        adaptationType: adaptationInfo.adaptationType,
+        confidence: adaptationInfo.confidence,
+        userPreference: adaptationInfo.userPreference,
+        learningData: adaptationInfo.learningData
+      }
+    };
+    
+    return instructions[detectedLanguage] || instructions.english;
+  }
+
 }

@@ -104,12 +104,30 @@ export class AdvancedSessionManager {
     // Build minimal contextual prompt
     let contextualPrompt = this.buildBasePrompt(sessionData.userProfile);
     
-    // Include only last exchange for immediate context
+    // Include recent conversation history for better context
     if (sessionData.history.length > 0) {
-      contextualPrompt += '\n\n**Recent Message:**\n';
-      const lastMessage = sessionData.history[sessionData.history.length - 1];
-      const role = lastMessage.role === 'user' ? 'User' : 'IslamicAI';
-      contextualPrompt += `${role}: ${lastMessage.content.substring(0, 100)}\n`;
+      contextualPrompt += '\n\n**Recent Conversation History:**\n';
+      // Include last 4 messages (2 exchanges) for better context
+      const recentHistory = sessionData.history.slice(-4);
+      recentHistory.forEach(msg => {
+        const role = msg.role === 'user' ? 'User' : 'IslamicAI';
+        contextualPrompt += `${role}: ${msg.content}\n`;
+      });
+    }
+    
+    // Add memory context if available
+    if (sessionData.memories.length > 0) {
+      contextualPrompt += '\n**Important Context from Previous Messages:**\n';
+      // Get most relevant memories
+      const relevantMemories = this.memory.getRelevantMemories(
+        sessionData.memories, 
+        userMessage, 
+        5
+      );
+      
+      relevantMemories.forEach(memory => {
+        contextualPrompt += `- ${memory.content}\n`;
+      });
     }
     
     return contextualPrompt;
@@ -741,6 +759,55 @@ export class AdvancedSessionManager {
     if (context.flow.length > 20) {
       context.flow = context.flow.slice(-20);
     }
+    
+    // Track key conversation points for better context recall
+    if (!context.keyPoints) context.keyPoints = [];
+    
+    // Extract key points from the conversation
+    const keyPoints = this.extractKeyPoints(userMessage, aiResponse);
+    context.keyPoints.push(...keyPoints);
+    
+    // Keep only last 10 key points
+    if (context.keyPoints.length > 10) {
+      context.keyPoints = context.keyPoints.slice(-10);
+    }
+  }
+
+  // Extract key points from conversation for better context recall
+  extractKeyPoints(userMessage, aiResponse) {
+    const keyPoints = [];
+    
+    // Check for personal information in user message
+    const personalInfoRegex = /(hello|hi|assalamu alaikum|kasa hai|kaise ho|how are you)/i;
+    if (personalInfoRegex.test(userMessage)) {
+      keyPoints.push({
+        type: 'greeting',
+        content: userMessage,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Check for family mentions
+    const familyRegex = /(maa|papa|bhai|sister|family|ghar|home)/i;
+    if (familyRegex.test(userMessage)) {
+      keyPoints.push({
+        type: 'family',
+        content: userMessage,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Check for health/well-being mentions
+    const healthRegex = /(thik|fine|well|sick|ill|bimar)/i;
+    if (healthRegex.test(userMessage)) {
+      keyPoints.push({
+        type: 'health',
+        content: userMessage,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    return keyPoints;
   }
 
   updateConversationFlow(conversationFlow, userMessage, aiResponse) {
@@ -800,7 +867,7 @@ export class AdvancedSessionManager {
   analyzeResponseType(response) {
     if (response.includes('Surah') || response.includes('Hadith')) {
       return 'scholarly';
-    } else if (response.includes('Allah knows best') || response.includes('🤲')) {
+    } else if (response.includes('Allah knows best') || response.includes('pliant')) {
       return 'humble';
     } else if (response.includes('example') || response.includes('for instance')) {
       return 'explanatory';
@@ -850,6 +917,13 @@ export class AdvancedSessionManager {
     } else {
       prompt += '\n**Response Style:** Provide balanced responses with appropriate detail.';
     }
+    
+    // Add contextual guidance for better conversation flow
+    prompt += '\n\n**Conversation Guidelines:**';
+    prompt += '\n- Maintain natural conversation flow and recall previous exchanges within the session';
+    prompt += '\n- Respond contextually to what the user has said before';
+    prompt += '\n- If the user mentions something they said earlier, acknowledge it appropriately';
+    prompt += '\n- Keep responses conversational and natural, not robotic';
     
     return prompt;
   }

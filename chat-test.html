@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IslamicAI Chat Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .chat-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .bot-message {
+            background-color: #f1f8e9;
+        }
+        .location-info {
+            background-color: #fff3e0;
+            color: #e65100;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .location-form {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            display: none;
+        }
+        .ip-form {
+            background-color: #f3e5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            display: none;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        #user-input, #manual-city, #manual-ip {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1565c0;
+        }
+        button:disabled {
+            background-color: #bdbdbd;
+            cursor: not-allowed;
+        }
+        .status {
+            text-align: center;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .connecting {
+            background-color: #fff3e0;
+            color: #e65100;
+        }
+        .connected {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .info {
+            background-color: #e3f2fd;
+            color: #1565c0;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        .session-info {
+            background-color: #fff3e0;
+            color: #e65100;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>IslamicAI Chat Test Interface</h1>
+    
+    <div class="info">
+        <strong>CORS Notice:</strong> If you see CORS errors, try one of these solutions:
+        <ol>
+            <li>Run this file through the same server as your backend</li>
+            <li>Disable CORS in your browser for testing (not recommended for production)</li>
+            <li>Use the backend's actual deployed URL instead of localhost</li>
+        </ol>
+    </div>
+    
+    <div class="session-info">
+        <strong>Current Session ID:</strong> <span id="session-id">test-session-0</span>
+        <button onclick="newSession()" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;">New Session</button>
+    </div>
+    
+    <div id="location-info" class="location-info" style="display: none;">
+        <strong>Your Location:</strong> <span id="location-details"></span>
+        <button onclick="showLocationForm()" style="margin-left: 10px; padding: 2px 8px; font-size: 12px;">Update</button>
+        <button onclick="showIPForm()" style="margin-left: 5px; padding: 2px 8px; font-size: 12px;">Set IP</button>
+    </div>
+    
+    <div id="location-form" class="location-form">
+        <h3>Set Your Location</h3>
+        <p>If automatic location detection isn't working, you can manually enter your city:</p>
+        <input type="text" id="manual-city" placeholder="Enter your city (e.g., London, New York, Delhi)" style="width: 100%; padding: 8px; margin: 10px 0;">
+        <button onclick="setManualLocation()">Set Location</button>
+        <button onclick="hideLocationForm()" style="background-color: #757575; margin-left: 10px;">Cancel</button>
+    </div>
+    
+    <div id="ip-form" class="ip-form">
+        <h3>Set IP Address for Testing</h3>
+        <p>For testing purposes, you can manually enter an IP address:</p>
+        <input type="text" id="manual-ip" placeholder="Enter IP address (e.g., 8.8.8.8)" style="width: 100%; padding: 8px; margin: 10px 0;">
+        <button onclick="setManualIP()">Set IP</button>
+        <button onclick="hideIPForm()" style="background-color: #757575; margin-left: 10px;">Cancel</button>
+        <p style="font-size: 12px; margin-top: 10px;">Note: Use a real IP address for testing (e.g., 8.8.8.8 for Google DNS)</p>
+    </div>
+    
+    <div class="status connecting" id="status">Connecting to backend...</div>
+    
+    <div class="chat-container">
+        <div class="chat-messages" id="chat-messages">
+            <div class="message bot-message">
+                Assalamu Alaikum! I'm IslamicAI, your Islamic Scholar assistant. How can I help you today?
+            </div>
+        </div>
+        
+        <div class="input-area">
+            <input type="text" id="user-input" placeholder="Type your message here...">
+            <button id="send-btn" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        // Configuration - Update this to match your backend URL
+        const BACKEND_URL = 'http://localhost:8787'; // Default for local development
+        
+        let isConnected = false;
+        let sessionId = 'test-session-' + Date.now();
+        let locationInfo = null;
+        let manualLocation = null;
+        let manualIP = null;
+        
+        // DOM Elements
+        const chatMessages = document.getElementById('chat-messages');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const statusDiv = document.getElementById('status');
+        const sessionIdSpan = document.getElementById('session-id');
+        const locationInfoDiv = document.getElementById('location-info');
+        const locationDetailsSpan = document.getElementById('location-details');
+        const locationFormDiv = document.getElementById('location-form');
+        const ipFormDiv = document.getElementById('ip-form');
+        const manualCityInput = document.getElementById('manual-city');
+        const manualIPInput = document.getElementById('manual-ip');
+        
+        // Update session ID display
+        sessionIdSpan.textContent = sessionId;
+        
+        // Create new session
+        function newSession() {
+            sessionId = 'test-session-' + Date.now();
+            sessionIdSpan.textContent = sessionId;
+            locationInfo = null;
+            manualLocation = null;
+            manualIP = null;
+            locationInfoDiv.style.display = 'none';
+            addMessage('New session started. Previous conversation history has been cleared.', 'bot');
+        }
+        
+        // Show location form
+        function showLocationForm() {
+            locationFormDiv.style.display = 'block';
+            if (locationInfo && locationInfo.city) {
+                manualCityInput.value = `${locationInfo.city}, ${locationInfo.country}`;
+            }
+        }
+        
+        // Hide location form
+        function hideLocationForm() {
+            locationFormDiv.style.display = 'none';
+        }
+        
+        // Show IP form
+        function showIPForm() {
+            ipFormDiv.style.display = 'block';
+        }
+        
+        // Hide IP form
+        function hideIPForm() {
+            ipFormDiv.style.display = 'none';
+        }
+        
+        // Set manual location
+        function setManualLocation() {
+            const city = manualCityInput.value.trim();
+            if (city) {
+                manualLocation = {
+                    city: city,
+                    region: 'Manually Set',
+                    country: 'User Defined',
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    source: 'manual',
+                    isDefault: false
+                };
+                displayLocationInfo(manualLocation);
+                hideLocationForm();
+                addMessage(`Location updated to: ${city}`, 'bot');
+            }
+        }
+        
+        // Set manual IP
+        function setManualIP() {
+            const ip = manualIPInput.value.trim();
+            if (ip) {
+                manualIP = ip;
+                hideIPForm();
+                addMessage(`IP address set to: ${ip}. Next message will use this IP for location detection.`, 'bot');
+            }
+        }
+        
+        // Check connection to backend
+        async function checkConnection() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/health`, {
+                    method: 'GET',
+                    mode: 'cors' // Explicitly set CORS mode
+                });
+                
+                if (response.ok) {
+                    try {
+                        const data = await response.json();
+                        isConnected = true;
+                        statusDiv.className = 'status connected';
+                        statusDiv.textContent = `Connected to backend (v${data.status})`;
+                        userInput.disabled = false;
+                        sendBtn.disabled = false;
+                    } catch (parseError) {
+                        // Handle case where response is not JSON
+                        isConnected = true;
+                        statusDiv.className = 'status connected';
+                        statusDiv.textContent = 'Connected to backend';
+                        userInput.disabled = false;
+                        sendBtn.disabled = false;
+                    }
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Connection error:', error);
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `Connection failed: ${error.message}<br>Check console for CORS errors`;
+                
+                // Enable inputs anyway so user can try sending messages
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                
+                // Retry connection after 10 seconds
+                setTimeout(checkConnection, 10000);
+            }
+        }
+        
+        // Send message to backend
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+            
+            // Add user message to chat
+            addMessage(message, 'user');
+            userInput.value = '';
+            userInput.disabled = true;
+            sendBtn.disabled = true;
+            
+            try {
+                // Show typing indicator
+                const typingIndicator = addTypingIndicator();
+                
+                // Prepare request body
+                const requestBody = {
+                    message: message,
+                    session_id: sessionId,
+                    // Disable streaming for simpler handling in test interface
+                    streaming_options: {
+                        enableStreaming: false
+                    }
+                };
+                
+                // Add manual IP if set
+                if (manualIP) {
+                    requestBody.manual_ip = manualIP;
+                }
+                
+                const response = await fetch(`${BACKEND_URL}/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                // Remove typing indicator
+                if (typingIndicator && typingIndicator.parentNode) {
+                    typingIndicator.parentNode.removeChild(typingIndicator);
+                }
+                
+                if (response.ok) {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('text/event-stream')) {
+                        // Handle streaming response
+                        addMessage('Streaming response received. This interface does not fully support streaming yet.', 'bot');
+                    } else {
+                        // Handle regular JSON response
+                        const data = await response.json();
+                        addMessage(data.reply || data.response || data.message || 'No response received', 'bot');
+                        
+                        // Show detected language if available
+                        if (data.language_info) {
+                            console.log('Detected language:', data.language_info);
+                        }
+                        
+                        // Show location information if available
+                        if (data.location_info && !locationInfo) {
+                            locationInfo = data.location_info;
+                            displayLocationInfo(locationInfo);
+                        } else if (data.location_info) {
+                            // Update location info if it's already displayed
+                            displayLocationInfo(data.location_info);
+                        }
+                    }
+                } else {
+                    try {
+                        const errorData = await response.json();
+                        addMessage(`Error: ${errorData.error || 'Failed to get response'}`, 'bot');
+                    } catch (parseError) {
+                        addMessage(`Error: HTTP ${response.status} - ${response.statusText}`, 'bot');
+                    }
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                // Remove typing indicator
+                const typingIndicator = document.getElementById('typing-indicator');
+                if (typingIndicator && typingIndicator.parentNode) {
+                    typingIndicator.parentNode.removeChild(typingIndicator);
+                }
+                
+                // More descriptive error message for CORS issues
+                if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+                    addMessage(`Error: CORS policy is blocking the request. This is a browser security feature. See the notice above for solutions.`, 'bot');
+                } else {
+                    addMessage(`Error: ${error.message || 'Failed to send message'}`, 'bot');
+                }
+            } finally {
+                userInput.disabled = false;
+                sendBtn.disabled = false;
+                userInput.focus();
+            }
+        }
+        
+        // Display location information
+        function displayLocationInfo(location) {
+            if (location && (location.city || location.region || location.country)) {
+                const locationText = `${location.city || 'Unknown City'}, ${location.region || ''} ${location.country || ''} (via ${location.source || 'unknown'})`;
+                locationDetailsSpan.textContent = locationText;
+                locationInfoDiv.style.display = 'block';
+            } else if (location && location.source === 'default') {
+                locationDetailsSpan.textContent = 'Default location (Makkah, Saudi Arabia) - Enable location services for accurate local information';
+                locationInfoDiv.style.display = 'block';
+            }
+        }
+        
+        // Add message to chat display
+        function addMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.textContent = text;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Add typing indicator
+        function addTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message bot-message';
+            typingDiv.id = 'typing-indicator';
+            typingDiv.textContent = 'Thinking...';
+            chatMessages.appendChild(typingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return typingDiv;
+        }
+        
+        // Event listeners
+        userInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Initialize
+        window.onload = function() {
+            checkConnection();
+            userInput.focus();
+        };
+    </script>
+</body>
+</html>
