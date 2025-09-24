@@ -1,34 +1,9 @@
 name = "islamicai"
 main = "src/index.js"
-compatibility_date = "2024-01-15"
+compatibility_date = "2024-09-23"
 
-[env.production]
-name = "islamicai"
-
-[env.staging]
-name = "islamicai"
-
-# KV Namespace for session storage
-[[kv_namespaces]]
-binding = "CHAT_SESSIONS"
-id = "2fbc40a619a14fef9a07cbfbffa92827"
-preview_id = "2fbc40a619a14fef9a07cbfbffa92827"
-
-# Environment variables
 [vars]
-# Multiple Gemini API keys separated by commas for load balancing and failover
-# Add multiple valid API keys from https://makersuite.google.com/app/apikey
-GEMINI_API_KEYS = "AIzaSyCGpimrLEZrz-rN6yVKfvTHG4G1dpOb_fc,AIzaSyDoq44UVQ-0bW1MCwAFgJveplWVt1ZWf1Y"
+GEMINI_API_KEY = "AIzaSyCYgUhHYdlKe6-kULbSpPYLbaCawTAdcqE"
 
-# Fallback single API key (if GEMINI_API_KEYS is not available)
-
-# Default streaming configuration
-DEFAULT_STREAMING_ENABLED = "true"
-STREAMING_CHUNK_SIZE = "30"
-STREAMING_DELAY_MS = "50"
-
-# Optional: Custom domain
-# [env.production]
-# routes = [
-#   { pattern = "chat.yourdomain.com/*", zone_name = "yourdomain.com" }
-# ]
+[observability]
+enabled = true

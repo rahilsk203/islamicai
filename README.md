@@ -1,207 +1,41 @@
-# IslamicAI Chat Worker
+# IslamicAI Cloudflare Worker with Google Gemini Integration
 
-An AI-powered chat assistant built as a Cloudflare Worker with session management, multilingual support, and Gemini API integration.
+This project is a Cloudflare Worker that integrates with the Google Gemini API to provide AI-powered responses.
 
-## Features
+## Setup
 
-- 🤖 **AI-Powered**: Uses Google's Gemini API for intelligent responses
-- 💬 **Session Management**: Maintains conversation history per session
-- 🌍 **Multilingual**: Supports English, Hindi, Bengali, and Hinglish
-- ⚡ **Fast**: Built on Cloudflare Workers for global edge performance
-- 🔒 **No Login Required**: Session-based authentication
-- 📝 **Command System**: Built-in commands for session management
-- 🔍 **Advanced Web Search**: Intelligent, context-aware search similar to ChatGPT
-- 🌐 **Real-time Information**: Access to current events, prayer times, and news
-- 🕌 **Islamic Intelligence**: Specialized handling of Islamic content and queries
-- 🧠 **AI Integration**: Seamless integration of web search with AI responses
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-## Quick Start
+2. Configure your Google Gemini API key in `wrangler.toml`:
+   ```toml
+   [vars]
+   GEMINI_API_KEY = "your_actual_api_key_here"
+   ```
 
-### 1. Prerequisites
+## Development
 
-- Node.js 18+ installed
-- Cloudflare account
-- Gemini API key
-
-### 2. Installation
-
+To run locally:
 ```bash
-# Clone or download the project
-cd islamicai
-
-# Install dependencies
-npm install
-
-# Install Wrangler CLI globally (if not already installed)
-npm install -g wrangler
-```
-
-### 3. Configuration
-
-1. **Get your Gemini API key** from [Google AI Studio](https://makersuite.google.com/app/apikey)
-
-2. **Create KV namespaces** for session storage:
-```bash
-# Create production KV namespace
-npm run kv:create
-
-# Create preview KV namespace
-npm run kv:create:preview
-```
-
-3. **Update `wrangler.toml`**:
-   - Replace `your-kv-namespace-id` with the actual KV namespace ID
-   - Replace `your-gemini-api-key-here` with your Gemini API key
-
-### 4. Development
-
-```bash
-# Start local development server
 npm run dev
 ```
 
-### 5. Deployment
+## Deployment
 
+To deploy to Cloudflare:
 ```bash
-# Deploy to staging
-npm run deploy:staging
-
-# Deploy to production
-npm run deploy:production
+npm run deploy
 ```
 
-## API Usage
+## Usage
 
-### Endpoint
-```
-POST https://your-worker.your-subdomain.workers.dev/?session_id=unique_session_id
-```
-
-### Request Body
+Send a POST request to your worker endpoint with a JSON body:
 ```json
 {
-  "message": "Hello, how are you?"
+  "input": "Your question here"
 }
 ```
 
-### Response Format
-```json
-{
-  "session_id": "unique_session_id",
-  "reply": "I'm doing well, thank you! How can I help you today?",
-  "history_summary": "Previous topics: weather, programming..."
-}
-```
-
-## Commands
-
-- `/clear` - Clear session history
-- `/help` - Show available commands
-- `/lang <language>` - Change response language (en, hi, bn, hinglish)
-
-## Example Usage
-
-### JavaScript/Fetch
-```javascript
-const response = await fetch('https://your-worker.workers.dev/?session_id=abc123', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    message: 'Hello! Can you help me with JavaScript?'
-  })
-});
-
-const data = await response.json();
-console.log(data.reply);
-```
-
-### cURL
-```bash
-curl -X POST "https://your-worker.workers.dev/?session_id=abc123" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Hello! How are you?"}'
-```
-
-## Architecture
-
-- **`src/index.js`**: Main Worker entry point with request handling
-- **`src/session-manager.js`**: Session history management with Cloudflare KV
-- **`src/gemini-api.js`**: Gemini API integration and response generation
-- **`src/command-handler.js`**: Command processing and system functions
-- **`src/advanced-web-search.js`**: Advanced, intelligent web search capabilities
-- **`src/internet-data-processor.js`**: Real-time data integration with AI responses
-
-## Environment Variables
-
-- `GEMINI_API_KEY`: Your Google Gemini API key
-- `CHAT_SESSIONS`: Cloudflare KV namespace for session storage
-
-## Session Management
-
-- Each session is identified by a unique `session_id`
-- Session history is stored in Cloudflare KV with 7-day TTL
-- Maximum 20 messages per session (older messages are summarized)
-- No user authentication required
-
-## Multilingual Support
-
-The assistant can respond in:
-- **English** (en)
-- **Hindi** (hi) 
-- **Bengali** (bn)
-- **Hinglish** (hinglish)
-
-Use `/lang <language>` command to change the response language.
-
-## Advanced Web Search
-
-IslamicAI includes an advanced web search system that provides intelligent, context-aware search similar to ChatGPT:
-
-- **Context-aware query analysis** - Understands intent beyond keywords
-- **Multi-engine search** - Uses DuckDuckGo, Google, Bing, and Brave
-- **Intelligent ranking** - Weighs relevance, trust, recency, and Islamic relevance
-- **Islamic content intelligence** - Specialized handling of Islamic topics
-- **Real-time information** - Access to current events, news, and prayer times
-- **AI integration** - Seamless integration of search results with AI responses
-
-See [ADVANCED_WEB_SEARCH.md](ADVANCED_WEB_SEARCH.md) for detailed documentation.
-
-## AI Integration with Web Search
-
-The AI system is seamlessly integrated with the advanced web search capabilities:
-
-- **Intelligent decision making** - Determines when to search and what to search for
-- **Enhanced prompt generation** - Creates rich prompts with current information
-- **Context preservation** - Maintains conversation context throughout
-- **Source attribution** - Properly cites all external information
-- **Quality assurance** - Ensures Islamic authenticity and accuracy
-
-See [AI_INTEGRATION_WITH_ADVANCED_SEARCH.md](AI_INTEGRATION_WITH_ADVANCED_SEARCH.md) for detailed documentation.
-
-## Error Handling
-
-- Graceful fallback when Gemini API is unavailable
-- CORS headers included for web integration
-- Comprehensive error logging
-- Session recovery on API failures
-
-## Security
-
-- Input validation and sanitization
-- Rate limiting through Cloudflare
-- Safe content filtering via Gemini's safety settings
-- No persistent user data storage
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## License
-
-MIT License - see LICENSE file for details.
+The worker will stream the response from the Google Gemini API.
