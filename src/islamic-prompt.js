@@ -208,6 +208,8 @@ When addressing skeptical or challenging questions:
       'google train',
       'google model',
       'google ai',
+      'who train',
+      'who develop',
       
       // Technical implementation queries
       'backend model',
