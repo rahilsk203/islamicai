@@ -46,6 +46,9 @@ export class IslamicPrompt {
         "ai": "A fair question! 🤔 The Qur'an challenges us to reflect rationally—its linguistic complexity, preserved unchanged for over 1400 years, stumps even modern linguists. 📖 Historically, the Prophet Muhammad's ﷺ leadership transformed a fragmented society, suggesting a purposeful design. 💡 Want to explore the Qur'an's mathematical patterns or the cosmological argument? I'm here to unpack it logically. 🤲 Allah knows best 🤲."
       }
     };
+
+    // Global setting: always include at least one Quranic verse in responses
+    this.alwaysIncludeQuran = true;
   }
 
   getSystemPrompt() {
@@ -68,9 +71,20 @@ IMPORTANT INSTRUCTIONS:
 RESPONSE STRUCTURE:
 - Begin with a brief, relevant greeting when appropriate
 - Address the user's question directly and comprehensively
+- MANDATORY: Include relevant Quranic verses (ayat) when discussing Islamic topics
 - Provide evidence from Islamic sources when relevant
+- Structure: Core answer → Quranic evidence → Practical application → Conclusion
 - Keep responses focused and avoid unnecessary elaboration
 - End with "Allah knows best" in the appropriate language
+
+QURANIC VERSE INCLUSION GUIDELINES:
+- ALWAYS include Quranic verses for: Islamic guidance, halal/haram, prayer, fasting, zakat, morality, faith, belief
+- INCLUDE verses for: Life guidance, spiritual topics, character development, Islamic principles
+- INCLUDE verses for: Debate responses, proving Islamic concepts, addressing misconceptions
+- INCLUDE verses for: Direct Quran questions, Islamic law (fiqh), creed (aqeedah)
+- FORMAT: Arabic text → Transliteration → Translation → Context/Application
+- CITE: Surah name and verse number (e.g., "Surah Al-Baqarah 2:255")
+- PRIORITY: High for Islamic guidance, Medium for spiritual topics, Low for general Islamic topics
 
 SPECIAL NOTE ON CURRENT INFORMATION:
 When users ask about:
@@ -269,7 +283,7 @@ When addressing skeptical or challenging questions:
   classifyQuery(userInput) {
     const lowerInput = userInput.toLowerCase();
     
-    // Enhanced classification with priority order
+    // Enhanced classification with priority order and Quranic verse inclusion indicators
     if (lowerInput.includes('quran') || lowerInput.includes('qur\'an') || lowerInput.includes('ayat') || lowerInput.includes('surah')) {
       return 'quran';
     } else if (lowerInput.includes('hadith') || lowerInput.includes('sunnah') || lowerInput.includes('narrated')) {
@@ -296,22 +310,159 @@ When addressing skeptical or challenging questions:
     }
   }
 
+  /**
+   * Determine if response should include Quranic verses
+   * @param {string} userInput - User's input
+   * @param {string} queryType - Classified query type
+   * @returns {Object} Decision and reasoning for Quranic verse inclusion
+   */
+  shouldIncludeQuranicVerses(userInput, queryType) {
+    const lowerInput = userInput.toLowerCase();
+    
+    // Always include for direct Quran queries
+    if (queryType === 'quran') {
+      return {
+        shouldInclude: true,
+        priority: 'high',
+        reason: 'direct_quran_query',
+        verseTypes: ['relevant_verses', 'context_verses', 'supporting_verses']
+      };
+    }
+    
+    // High priority for Islamic guidance queries
+    const islamicGuidanceKeywords = [
+      'halal', 'haram', 'prayer', 'namaz', 'fasting', 'roza', 'zakat', 'sadaqah',
+      'marriage', 'divorce', 'inheritance', 'business', 'trade', 'interest', 'riba',
+      'morality', 'ethics', 'righteousness', 'sin', 'forgiveness', 'repentance'
+    ];
+    
+    const hasIslamicGuidance = islamicGuidanceKeywords.some(keyword => lowerInput.includes(keyword));
+    
+    if (hasIslamicGuidance || queryType === 'fiqh') {
+      return {
+        shouldInclude: true,
+        priority: 'high',
+        reason: 'islamic_guidance_query',
+        verseTypes: ['command_verses', 'guidance_verses', 'prohibition_verses']
+      };
+    }
+    
+    // Medium priority for spiritual and moral topics
+    const spiritualKeywords = [
+      'faith', 'belief', 'iman', 'tawheed', 'monotheism', 'god', 'allah',
+      'spirituality', 'soul', 'heart', 'purification', 'character', 'virtue',
+      'patience', 'gratitude', 'trust', 'hope', 'fear', 'love', 'mercy'
+    ];
+    
+    const hasSpiritualContent = spiritualKeywords.some(keyword => lowerInput.includes(keyword));
+    
+    if (hasSpiritualContent || queryType === 'aqeedah') {
+      return {
+        shouldInclude: true,
+        priority: 'medium',
+        reason: 'spiritual_moral_query',
+        verseTypes: ['inspirational_verses', 'wisdom_verses', 'comfort_verses']
+      };
+    }
+    
+    // Medium priority for debate and discussion
+    if (queryType === 'debate') {
+      return {
+        shouldInclude: true,
+        priority: 'medium',
+        reason: 'debate_discussion_query',
+        verseTypes: ['evidence_verses', 'proof_verses', 'rational_verses']
+      };
+    }
+    
+    // Low priority for general Islamic topics
+    const generalIslamicKeywords = [
+      'islam', 'muslim', 'islamic', 'religion', 'deen', 'shariah',
+      'ummah', 'community', 'brotherhood', 'sisterhood'
+    ];
+    
+    const hasGeneralIslamic = generalIslamicKeywords.some(keyword => lowerInput.includes(keyword));
+    
+    if (hasGeneralIslamic) {
+      return {
+        shouldInclude: true,
+        priority: 'low',
+        reason: 'general_islamic_query',
+        verseTypes: ['foundational_verses', 'context_verses']
+      };
+    }
+    
+    // Check for life guidance queries
+    const lifeGuidanceKeywords = [
+      'how to', 'what should', 'advice', 'guidance', 'help', 'problem', 'difficulty',
+      'struggle', 'challenge', 'decision', 'choice', 'right path', 'wisdom'
+    ];
+    
+    const hasLifeGuidance = lifeGuidanceKeywords.some(keyword => lowerInput.includes(keyword));
+    
+    if (hasLifeGuidance) {
+      return {
+        shouldInclude: true,
+        priority: 'medium',
+        reason: 'life_guidance_query',
+        verseTypes: ['guidance_verses', 'wisdom_verses', 'comfort_verses']
+      };
+    }
+    
+    // Default: no Quranic verses needed
+    return {
+      shouldInclude: false,
+      priority: 'none',
+      reason: 'non_islamic_query',
+      verseTypes: []
+    };
+  }
+
   getQuerySpecificPrompt(queryType) {
     const prompts = {
-      quran: "Focus on Qur'anic text, context, meaning, and application. Cite specific verses with Surah and Ayah numbers.",
-      hadith: "Reference authentic Hadith collections (Sahih Bukhari, Muslim, etc.). Include grade of authenticity when known.",
-      fiqh: "Apply principles from all four schools of jurisprudence. Mention differences respectfully when relevant.",
-      seerah: "Draw from authentic historical sources. Connect events to lessons and wisdom.",
+      quran: `Focus on Qur'anic text, context, meaning, and application. 
+MANDATORY: Always include relevant Quranic verses with proper Surah and Ayah citations.
+Structure: Provide the Arabic text, transliteration, translation, and context.
+Include multiple relevant verses when applicable to give comprehensive understanding.`,
+      
+      hadith: `Reference authentic Hadith collections (Sahih Bukhari, Muslim, etc.). Include grade of authenticity when known.
+ALWAYS include relevant Quranic verses that support or relate to the Hadith being discussed.
+Show the connection between Quranic guidance and Prophetic practice.`,
+      
+      fiqh: `Apply principles from all four schools of jurisprudence. Mention differences respectfully when relevant.
+MANDATORY: Include Quranic verses that establish the legal basis for rulings.
+Structure: Quranic foundation → Hadith evidence → Scholarly consensus → Practical application.
+Always cite the specific verses that form the basis of Islamic law on the topic.`,
+      
+      seerah: `Draw from authentic historical sources. Connect events to lessons and wisdom.
+INCLUDE relevant Quranic verses that were revealed in context of historical events.
+Show how Quranic guidance was applied in the Prophet's life and the lives of companions.
+Connect historical events to current applications of Islamic principles.`,
+      
       debate: `Respond with scholarly arguments, evidence, and rational explanations. Address counterpoints respectfully.
+MANDATORY: Use Quranic verses as primary evidence for Islamic positions.
 Use the Debate-Proof Response Framework:
 1. Respectful Acknowledgment
-2. Islamic Perspective Presentation
-3. Rational Argumentation
+2. Islamic Perspective Presentation (with Quranic evidence)
+3. Rational Argumentation (supported by verses)
 4. Balanced Approach
-5. Constructive Conclusion`,
-      dua: "Provide authentic supplications with references. Include transliteration and meaning when appropriate.",
-      aqeedah: "Focus on core Islamic beliefs. Use clear, precise language avoiding speculative theology.",
-      general: "Provide balanced, authentic Islamic guidance. Connect to relevant sources when beneficial."
+5. Constructive Conclusion
+Always back arguments with specific Quranic citations.`,
+      
+      dua: `Provide authentic supplications with references. Include transliteration and meaning when appropriate.
+INCLUDE Quranic verses that relate to the topic of supplication.
+Show how Quranic guidance supports the practice of making dua.
+Connect the dua to relevant Quranic teachings about prayer and supplication.`,
+      
+      aqeedah: `Focus on core Islamic beliefs. Use clear, precise language avoiding speculative theology.
+MANDATORY: Include Quranic verses that establish core beliefs.
+Structure: Belief statement → Quranic evidence → Explanation → Practical implications.
+Always cite the specific verses that form the foundation of Islamic creed.`,
+      
+      general: `Provide balanced, authentic Islamic guidance. Connect to relevant sources when beneficial.
+When the topic relates to Islamic principles, include relevant Quranic verses.
+Use verses to support guidance and provide spiritual context.
+Structure responses with Quranic foundation when applicable.`
     };
     
     return prompts[queryType] || prompts.general;
@@ -410,5 +561,13 @@ When appropriate, structure responses with these comprehensive sections:
 - Ensure responses are sufficiently detailed for educational value
 
 Remember: Your primary function is to provide authentic, detailed, and comprehensive Islamic guidance. All other considerations are secondary to this core mission.`;
+  }
+
+  /**
+   * Universal instruction block to include a Quranic verse in every response
+   * Returns formatted guidance to be appended to the system/context prompt
+   */
+  getUniversalQuranInclusionInstruction() {
+    return `\n\n**📖 UNIVERSAL QURAN INCLUSION (ENFORCED)**\n- Always include at least ONE relevant Quranic verse in EVERY response\n- Format: Arabic → Transliteration → Translation (in the user's detected language) → Brief Context/Application\n- Always cite Surah name and verse number (e.g., "Surah Al-Baqarah 2:255")\n- If topic is non-religious, include a generally relevant wisdom verse (e.g., patience, justice, truth) that uplifts without forcing relevance`;
   }
 }

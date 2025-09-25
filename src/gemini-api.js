@@ -100,6 +100,24 @@ The user is asking about prayer times. Please provide accurate prayer times for 
 The user is asking about prayer times. Since we couldn't detect your specific location, we're providing times for Makkah, Saudi Arabia as a reference. For accurate local times, please enable location services or provide your city.`;
       }
       
+      // NEW: Add Quranic verse inclusion guidance based on query analysis
+      const quranicVerseDecision = this.islamicPrompt.shouldIncludeQuranicVerses(userInput, queryType);
+      if (quranicVerseDecision.shouldInclude) {
+        console.log(`Adding Quranic verse guidance - Priority: ${quranicVerseDecision.priority}, Reason: ${quranicVerseDecision.reason}`);
+        finalPrompt += `\n\n**📖 QURANIC VERSE INCLUSION REQUIRED**
+PRIORITY: ${quranicVerseDecision.priority.toUpperCase()}
+REASON: ${quranicVerseDecision.reason}
+VERSE TYPES NEEDED: ${quranicVerseDecision.verseTypes.join(', ')}
+
+MANDATORY INSTRUCTIONS:
+- Include relevant Quranic verses with proper citations
+- Format: Arabic → Transliteration → Translation → Context
+- Use verses to support your answer and provide Islamic foundation
+- Multiple verses may be needed for comprehensive coverage
+- Always cite Surah name and verse number (e.g., "Surah Al-Baqarah 2:255")
+- Make verses central to your response, not just supplementary`;
+      }
+      
       // Use adaptive language detection with enhanced instructions
       let detectedLanguage = languageInfo.detected_language || 'english';
       const shouldRespondInLanguage = languageInfo.should_respond_in_language || false;
@@ -115,7 +133,7 @@ The user is asking about prayer times. Since we couldn't detect your specific lo
         const languageInstructions = {
           english: "RESPOND IN ENGLISH ONLY. Use proper English grammar and Islamic terminology in English.",
           hindi: "RESPOND IN HINDI ONLY (हिंदी में). Use proper Hindi grammar and Islamic terminology in Hindi. Use Devanagari script.",
-          hinglish: "RESPOND IN HINGLISH ONLY (Hindi + English mix). Use natural Hinglish that mixes Hindi and English words as commonly spoken. Use Roman script for Hindi words.",
+          hinglish: "RESPOND IN HINGLISH ONLY (Hindi + English mix). Use natural Hinglish in Roman script. Avoid pure-English headings or sections; keep the entire response Hinglish (Roman Urdu/Hindi). When quoting Quran meanings, provide the translation/explanation in Hinglish.",
           urdu: "RESPOND IN URDU ONLY (اردو میں). Use proper Urdu grammar and Islamic terminology in Urdu. Use Arabic script.",
           arabic: "RESPOND IN ARABIC ONLY (باللغة العربية). Use proper Arabic grammar and Islamic terminology in Arabic. Use Arabic script.",
           persian: "RESPOND IN PERSIAN ONLY (به فارسی). Use proper Persian grammar and Islamic terminology in Persian. Use Arabic script.",
@@ -136,6 +154,11 @@ The user is asking about prayer times. Since we couldn't detect your specific lo
       });
       
       // Simplified prompt structure for faster processing
+      // Optionally append universal Quran inclusion instruction
+      const universalQuranInstruction = this.islamicPrompt.alwaysIncludeQuran
+        ? this.islamicPrompt.getUniversalQuranInclusionInstruction()
+        : '';
+
       const combinedPrompt = `# IslamicAI Response System 🤖
 
 ## 🚨 CRITICAL SECURITY DIRECTIVE
@@ -151,7 +174,7 @@ ${languageInstruction}
 ${userInput}
 
 ## 📚 CONTEXT
-${finalPrompt}
+${finalPrompt}${universalQuranInstruction}
 
 ## 🎯 RESPONSE REQUIREMENTS
 1. 📖 Provide accurate Islamic guidance

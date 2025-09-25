@@ -58,6 +58,7 @@ export class AdvancedSessionManager {
     return {
       history: [],
       memories: [],
+      behaviorProfile: null,
       userProfile: {},
       conversationContext: {},
       lastActivity: new Date().toISOString(),
@@ -160,6 +161,12 @@ export class AdvancedSessionManager {
     
     // DSA: Build contextual prompt with advanced structure
     let contextualPrompt = this.buildBasePrompt(sessionData.userProfile);
+
+    // Inject concise behavior core memory block
+    if (sessionData.behaviorProfile) {
+      const bp = sessionData.behaviorProfile;
+      contextualPrompt += `\n\n**User Behavior Profile (Auto-Learn):**\n- Samples: ${bp.samples}\n- Avg length (chars): ${bp.avgMessageLengthChars}\n- Hinglish preference: ${bp.hinglishPreferenceRatio}\n- Quran affinity: ${bp.quranAffinityRatio}\n- Likes citations: ${bp.wantsCitationsRatio}\n- Prefers short: ${bp.prefersShortRatio}, detailed: ${bp.prefersDetailedRatio}\n- Questions/msg: ${bp.questionPerMessage}, exclaims/msg: ${bp.exclaimPerMessage}`;
+    }
     
     // DSA: Add conversation history with time-based clustering
     if (sortedHistory.length > 0) {
@@ -615,6 +622,14 @@ export class AdvancedSessionManager {
       sessionData.history = this._slidingWindowTrim(sessionData.history, this.maxHistoryLength);
     }
     
+    // Compute/merge behavior core memory (DSA optimized)
+    try {
+      const snapshot = this.memory.computeBehaviorProfile(sessionData.history);
+      sessionData.behaviorProfile = this.memory.updateBehaviorProfile(sessionData.behaviorProfile, snapshot);
+    } catch (err) {
+      console.log('Behavior profiling error:', err.message);
+    }
+
     // Save updated session data
     await this.saveSessionData(sessionId, sessionData);
     
@@ -659,9 +674,13 @@ export class AdvancedSessionManager {
   }
 
   updateUserProfile(userProfile, importantInfo) {
-    // Update language preference
+    // Update language preference from explicit preference or learned behavior
     if (importantInfo.userPreferences.language) {
       userProfile.preferredLanguage = importantInfo.userPreferences.language;
+    } else if (this._shouldPreferHinglish(userProfile)) {
+      userProfile.preferredLanguage = 'hinglish';
+    } else if (this._shouldPreferArabic(userProfile)) {
+      userProfile.preferredLanguage = 'arabic';
     }
     
     // Update Fiqh school preference
@@ -697,6 +716,32 @@ export class AdvancedSessionManager {
           userProfile.keyFacts[fact.type] = fact.value;
         }
       });
+    }
+  }
+
+  // Decide Hinglish preference using behavior profile
+  _shouldPreferHinglish(userProfile = {}) {
+    try {
+      // Try to pull from cached session data if available
+      const currentSession = [...this.sessionCache.values()].pop();
+      const bp = (currentSession && currentSession.behaviorProfile) || null;
+      if (!bp) return false;
+      // Confidence: prefer Hinglish if ratio >= 0.5 and detailed/short lean is not strongly English-indicative
+      return (bp.hinglishPreferenceRatio || 0) >= 0.5;
+    } catch {
+      return false;
+    }
+  }
+
+  // Decide Arabic preference using behavior profile
+  _shouldPreferArabic(userProfile = {}) {
+    try {
+      const currentSession = [...this.sessionCache.values()].pop();
+      const bp = (currentSession && currentSession.behaviorProfile) || null;
+      if (!bp) return false;
+      return (bp.arabicPreferenceRatio || 0) >= 0.5;
+    } catch {
+      return false;
     }
   }
 

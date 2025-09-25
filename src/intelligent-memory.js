@@ -28,6 +28,100 @@ export class IntelligentMemory {
     this.memoryHashMap = new Map();
   }
 
+  // Derive lightweight behavior signals from a single message (O(1) ops per message)
+  extractBehaviorSignals(message) {
+    const text = (message || '').toString();
+    const lower = text.toLowerCase();
+    const arabicMatches = text.match(/[\u0600-\u06FF]/g) || [];
+    const signals = {
+      emojiCount: (text.match(/[\p{Emoji}\u{1F300}-\u{1FAFF}]/gu) || []).length,
+      questionMarks: (text.match(/\?/g) || []).length,
+      exclamations: (text.match(/\!/g) || []).length,
+      lengthChars: text.length,
+      wantsCitations: /cite|reference|source|hawala|daleel/.test(lower),
+      wantsQuranOften: /quran|ayat|aayat|surah|ayah|verse/.test(lower),
+      prefersHinglish: /(hinglish|roman|mix|urdu|hindi)/.test(lower),
+      prefersArabic: arabicMatches.length > 5,
+      prefersShort: /short|brief|sankshipt|chhota|small/.test(lower),
+      prefersDetailed: /detail|tafseel|long|lamba|comprehensive/.test(lower),
+      correctionTone: /(actually|nahi|galat|incorrect|sahi ye hai)/.test(lower)
+    };
+    return signals;
+  }
+
+  // O(n) single-pass aggregation into a compact behavior profile
+  computeBehaviorProfile(conversationHistory = []) {
+    let userMsgCount = 0;
+    let agg = {
+      totalEmoji: 0,
+      totalQuestions: 0,
+      totalExclaims: 0,
+      totalChars: 0,
+      wantsCitations: 0,
+      wantsQuranOften: 0,
+      prefersHinglish: 0,
+      prefersArabic: 0,
+      prefersShort: 0,
+      prefersDetailed: 0,
+      corrections: 0
+    };
+    for (const msg of conversationHistory) {
+      if (msg.role !== 'user') continue;
+      userMsgCount++;
+      const s = this.extractBehaviorSignals(msg.content || '');
+      agg.totalEmoji += s.emojiCount;
+      agg.totalQuestions += s.questionMarks;
+      agg.totalExclaims += s.exclamations;
+      agg.totalChars += s.lengthChars;
+      agg.wantsCitations += s.wantsCitations ? 1 : 0;
+      agg.wantsQuranOften += s.wantsQuranOften ? 1 : 0;
+      agg.prefersHinglish += s.prefersHinglish ? 1 : 0;
+      agg.prefersArabic += s.prefersArabic ? 1 : 0;
+      agg.prefersShort += s.prefersShort ? 1 : 0;
+      agg.prefersDetailed += s.prefersDetailed ? 1 : 0;
+      agg.corrections += s.correctionTone ? 1 : 0;
+    }
+    const denom = Math.max(1, userMsgCount);
+    const avgLen = Math.round(agg.totalChars / denom);
+    const profile = {
+      samples: userMsgCount,
+      avgMessageLengthChars: avgLen,
+      emojiPerMessage: +(agg.totalEmoji / denom).toFixed(2),
+      questionPerMessage: +(agg.totalQuestions / denom).toFixed(2),
+      exclaimPerMessage: +(agg.totalExclaims / denom).toFixed(2),
+      wantsCitationsRatio: +(agg.wantsCitations / denom).toFixed(2),
+      quranAffinityRatio: +(agg.wantsQuranOften / denom).toFixed(2),
+      hinglishPreferenceRatio: +(agg.prefersHinglish / denom).toFixed(2),
+      arabicPreferenceRatio: +(agg.prefersArabic / denom).toFixed(2),
+      prefersShortRatio: +(agg.prefersShort / denom).toFixed(2),
+      prefersDetailedRatio: +(agg.prefersDetailed / denom).toFixed(2),
+      correctionFrequency: +(agg.corrections / denom).toFixed(2)
+    };
+    return profile;
+  }
+
+  // O(1) incremental update by weighted merge between old and new snapshot
+  updateBehaviorProfile(existingProfile = null, newSnapshot) {
+    if (!existingProfile) return newSnapshot;
+    const wOld = Math.min(0.9, Math.max(0.1, existingProfile.samples / (existingProfile.samples + 1)));
+    const wNew = 1 - wOld;
+    const mergeNum = (a, b) => +(a * wOld + b * wNew).toFixed(2);
+    return {
+      samples: existingProfile.samples + 1,
+      avgMessageLengthChars: Math.round(existingProfile.avgMessageLengthChars * wOld + newSnapshot.avgMessageLengthChars * wNew),
+      emojiPerMessage: mergeNum(existingProfile.emojiPerMessage, newSnapshot.emojiPerMessage),
+      questionPerMessage: mergeNum(existingProfile.questionPerMessage, newSnapshot.questionPerMessage),
+      exclaimPerMessage: mergeNum(existingProfile.exclaimPerMessage, newSnapshot.exclaimPerMessage),
+      wantsCitationsRatio: mergeNum(existingProfile.wantsCitationsRatio, newSnapshot.wantsCitationsRatio),
+      quranAffinityRatio: mergeNum(existingProfile.quranAffinityRatio, newSnapshot.quranAffinityRatio),
+      hinglishPreferenceRatio: mergeNum(existingProfile.hinglishPreferenceRatio, newSnapshot.hinglishPreferenceRatio),
+      arabicPreferenceRatio: mergeNum(existingProfile.arabicPreferenceRatio, newSnapshot.arabicPreferenceRatio),
+      prefersShortRatio: mergeNum(existingProfile.prefersShortRatio, newSnapshot.prefersShortRatio),
+      prefersDetailedRatio: mergeNum(existingProfile.prefersDetailedRatio, newSnapshot.prefersDetailedRatio),
+      correctionFrequency: mergeNum(existingProfile.correctionFrequency, newSnapshot.correctionFrequency)
+    };
+  }
+
   // DSA: Bloom Filter implementation for memory existence check
   _addToMemoryBloomFilter(content) {
     // Simple implementation using multiple hash functions
