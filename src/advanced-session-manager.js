@@ -114,6 +114,12 @@ export class AdvancedSessionManager {
         const role = msg.role === 'user' ? 'User' : 'IslamicAI';
         contextualPrompt += `${role}: ${msg.content}\n`;
       });
+      
+      // Add instruction to maintain conversation context
+      contextualPrompt += '\n**Conversation Context Instructions:**\n';
+      contextualPrompt += '- Respond directly to the user\'s latest message while considering the conversation history\n';
+      contextualPrompt += '- If the user refers to something mentioned earlier in the conversation, acknowledge it appropriately\n';
+      contextualPrompt += '- Maintain natural conversation flow and avoid repeating information unnecessarily\n';
     }
     
     // Add memory context if available
@@ -161,11 +167,27 @@ export class AdvancedSessionManager {
     
     // DSA: Build contextual prompt with advanced structure
     let contextualPrompt = this.buildBasePrompt(sessionData.userProfile);
+    
+    // Add conversation flow instructions
+    contextualPrompt += '\n\n**Conversation Flow Instructions:**\n';
+    contextualPrompt += '- Maintain natural conversation progression based on the history\n';
+    contextualPrompt += '- Respond directly to the user\'s current message while considering previous context\n';
+    contextualPrompt += '- Acknowledge references to earlier parts of the conversation when appropriate\n';
+    contextualPrompt += '- Avoid repetitive responses and build upon previous exchanges\n';
 
     // Inject concise behavior core memory block
     if (sessionData.behaviorProfile) {
       const bp = sessionData.behaviorProfile;
-      contextualPrompt += `\n\n**User Behavior Profile (Auto-Learn):**\n- Samples: ${bp.samples}\n- Avg length (chars): ${bp.avgMessageLengthChars}\n- Hinglish preference: ${bp.hinglishPreferenceRatio}\n- Quran affinity: ${bp.quranAffinityRatio}\n- Likes citations: ${bp.wantsCitationsRatio}\n- Prefers short: ${bp.prefersShortRatio}, detailed: ${bp.prefersDetailedRatio}\n- Questions/msg: ${bp.questionPerMessage}, exclaims/msg: ${bp.exclaimPerMessage}`;
+      contextualPrompt += `
+
+**User Behavior Profile (Auto-Learn):**
+- Samples: ${bp.samples}
+- Avg length (chars): ${bp.avgMessageLengthChars}
+- Hinglish preference: ${bp.hinglishPreferenceRatio}
+- Quran affinity: ${bp.quranAffinityRatio}
+- Likes citations: ${bp.wantsCitationsRatio}
+- Prefers short: ${bp.prefersShortRatio}, detailed: ${bp.prefersDetailedRatio}
+- Questions/msg: ${bp.questionPerMessage}, exclaims/msg: ${bp.exclaimPerMessage}`;
     }
     
     // DSA: Add conversation history with time-based clustering
@@ -316,6 +338,12 @@ export class AdvancedSessionManager {
     if (recentUserMessages.length > 0) {
       personalizedContext += `- Recent user questions: ${recentUserMessages.join('; ')}.\n`;
     }
+    
+    // Add conversation flow instructions
+    personalizedContext += '\n**Conversation Flow Guidance:**\n';
+    personalizedContext += '- Maintain continuity with previous exchanges\n';
+    personalizedContext += '- Acknowledge when user refers to earlier parts of conversation\n';
+    personalizedContext += '- Build naturally on previous responses rather than restarting topics\n';
     
     return personalizedContext;
   }
@@ -969,6 +997,8 @@ export class AdvancedSessionManager {
     prompt += '\n- Respond contextually to what the user has said before';
     prompt += '\n- If the user mentions something they said earlier, acknowledge it appropriately';
     prompt += '\n- Keep responses conversational and natural, not robotic';
+    prompt += '\n- Follow the conversation context instructions provided in the session history';
+    prompt += '\n- Build upon previous responses rather than repeating information unnecessarily';
     
     return prompt;
   }

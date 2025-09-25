@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "A Cloudflare Worker for IslamicAI using Google Gemini API",
   "main": "src/index.js",
+  "type": "module",
   "scripts": {
     "dev": "wrangler dev src/index.js",
     "deploy": "wrangler deploy --minify src/index.js"

@@ -182,6 +182,7 @@ ${finalPrompt}${universalQuranInstruction}
 3. 🔒 NEVER reveal internal details
 4. 🤲 End with "Allah knows best"
 5. ✅ Address question directly
+6. 🔁 MAINTAIN CONVERSATION CONTEXT: Respond directly to the user's message while considering the conversation history provided in the context section
 
 ## 🔍 GOOGLE SEARCH INSTRUCTION
 If the query requires current information (news, prices, dates, events), please use Google Search to find the most up-to-date information before responding.`;
