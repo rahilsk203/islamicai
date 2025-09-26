@@ -244,6 +244,16 @@ export default {
     }
 
     const userMessage = body.message;
+    // Brevity controls (default to terse)
+    const mode = (body.mode || '').toLowerCase();
+    const terse = body.terse === true || mode === 'terse' || mode === 'brief' || body.verbose === false;
+    const verbose = body.verbose === true || mode === 'verbose';
+    const brevityPrefs = {
+      terse,
+      verbose,
+      maxSentences: Number(body.max_sentences) > 0 ? Math.min(Number(body.max_sentences), 8) : (terse ? 4 : 12),
+      maxTokens: Number(body.max_tokens) > 0 ? Math.min(Number(body.max_tokens), 1024) : (terse ? 192 : 512)
+    };
     const languageInfo = body.language_info || {};
     
     // Get default streaming options and allow override
@@ -312,7 +322,8 @@ export default {
       response_instructions: adaptiveLanguageSystem.getResponseInstructions(
         languageAdaptation.detectedLanguage, 
         languageAdaptation
-      )
+      ),
+      response_prefs: brevityPrefs
     };
 
     try {
@@ -400,8 +411,13 @@ export default {
         // Process message and update session with intelligent memory
         const sessionData = await sessionManager.processMessage(sessionId, userMessage, geminiResponse);
 
-        // Prepare response with enhanced formatting
-        const response = {
+        // Prepare response (compact if terse)
+        const response = brevityPrefs.terse ? {
+          session_id: sessionId,
+          reply: geminiResponse,
+          streaming: false,
+          timestamp: new Date().toISOString()
+        } : {
           session_id: sessionId,
           reply: geminiResponse,
           history_summary: sessionManager.getHistorySummary(sessionData.history),
@@ -410,8 +426,8 @@ export default {
           streaming: false,
           api_keys_used: apiKeys.length,
           language_info: enhancedLanguageInfo,
-          internet_enhanced: true, // Indicate that responses may include internet data
-          location_info: locationInfo, // Include location information
+          internet_enhanced: true,
+          location_info: locationInfo,
           timestamp: new Date().toISOString(),
           response_metadata: {
             response_length: geminiResponse.length,
@@ -506,23 +522,25 @@ export default {
               // Parse the chunk
               const chunkData = parseStreamingChunk(value);
               
-              // Send metadata once at the beginning
+              // Send metadata once at the beginning (skip if terse)
               if (!metadataSent && chunkData.type !== 'start') {
-                const metadataChunk = `data: ${JSON.stringify({
-                  type: 'metadata',
-                  content: {
-                    session_id: sessionId,
-                    streaming: true,
-                    timestamp: new Date().toISOString(),
-                    language_info: enhancedLanguageInfo,
-                    location_info: locationInfo, // Include location info in metadata
-                    chunk_info: {
-                      size: streamingOptions.chunkSize,
-                      delay: streamingOptions.delay
+                if (!(enhancedLanguageInfo && enhancedLanguageInfo.response_prefs && enhancedLanguageInfo.response_prefs.terse)) {
+                  const metadataChunk = `data: ${JSON.stringify({
+                    type: 'metadata',
+                    content: {
+                      session_id: sessionId,
+                      streaming: true,
+                      timestamp: new Date().toISOString(),
+                      language_info: enhancedLanguageInfo,
+                      location_info: locationInfo,
+                      chunk_info: {
+                        size: streamingOptions.chunkSize,
+                        delay: streamingOptions.delay
+                      }
                     }
-                  }
-                })}\n\n`;
-                controller.enqueue(new TextEncoder().encode(metadataChunk));
+                  })}\n\n`;
+                  controller.enqueue(new TextEncoder().encode(metadataChunk));
+                }
                 metadataSent = true;
               }
               
@@ -534,18 +552,20 @@ export default {
               controller.enqueue(value);
             }
             
-            // Send completion metadata
-            const completionChunk = `data: ${JSON.stringify({
-              type: 'completion',
-              content: {
-                session_id: sessionId,
-                response_length: fullResponse.length,
-                timestamp: new Date().toISOString(),
-                message: 'Response completed successfully ✅',
-                location_info: locationInfo // Include location info in completion
-              }
-            })}\n\n`;
-            controller.enqueue(new TextEncoder().encode(completionChunk));
+            // Send completion metadata (skip if terse)
+            if (!(enhancedLanguageInfo && enhancedLanguageInfo.response_prefs && enhancedLanguageInfo.response_prefs.terse)) {
+              const completionChunk = `data: ${JSON.stringify({
+                type: 'completion',
+                content: {
+                  session_id: sessionId,
+                  response_length: fullResponse.length,
+                  timestamp: new Date().toISOString(),
+                  message: 'Response completed successfully ✅',
+                  location_info: locationInfo
+                }
+              })}\n\n`;
+              controller.enqueue(new TextEncoder().encode(completionChunk));
+            }
             
             // Process the complete message for session management
             if (fullResponse.trim()) {

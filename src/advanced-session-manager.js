@@ -657,7 +657,7 @@ export class AdvancedSessionManager {
     } catch (err) {
       console.log('Behavior profiling error:', err.message);
     }
-
+    
     // Save updated session data
     await this.saveSessionData(sessionId, sessionData);
     

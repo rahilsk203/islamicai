@@ -1,6 +1,6 @@
 /**
  * Advanced Web Search Module for IslamicAI
- * Implements intelligent search similar to ChatGPT and other advanced platforms
+ * Implements intelligent search similar to IslamicAI and other advanced platforms
  */
 
 export class AdvancedWebSearch {

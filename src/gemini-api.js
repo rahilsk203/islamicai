@@ -12,10 +12,27 @@ export class GeminiAPI {
     this.streamingUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelId}:streamGenerateContent`;
     this.islamicPrompt = new IslamicPrompt(); // Use the enhanced prompt
     this.internetProcessor = new InternetDataProcessor();
+    // Simple LRU cache for memoizing recent responses
+    this.responseCache = new Map();
+    this.cacheCapacity = 200; // adjustable
   }
 
   async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = { enableStreaming: true }, userIP = null, locationInfo = null) {
     try {
+      // Brevity preferences
+      const prefs = (languageInfo && languageInfo.response_instructions && languageInfo.response_prefs) ? languageInfo.response_prefs : (languageInfo.response_prefs || {});
+      const terse = !!(prefs && prefs.terse);
+      const maxTokens = (prefs && prefs.maxTokens) ? prefs.maxTokens : 512;
+      const maxSentences = (prefs && prefs.maxSentences) ? prefs.maxSentences : (terse ? 4 : 12);
+
+      // Cache key (normalize input/context)
+      const cacheKey = JSON.stringify({ s: sessionId, q: userInput.trim().slice(0, 512), lang: languageInfo.detected_language, ctx: (contextualPrompt || '').slice(0, 512), terse, maxTokens, loc: locationInfo ? `${locationInfo.city}|${locationInfo.country}` : '' });
+      if (streamingOptions.enableStreaming !== true) {
+        const cached = this._getFromCache(cacheKey);
+        if (cached) {
+          return cached;
+        }
+      }
       // Validate input for security
       const validation = this.islamicPrompt.validateInput(userInput);
       if (!validation.isValid) {
@@ -159,6 +176,13 @@ MANDATORY INSTRUCTIONS:
         ? this.islamicPrompt.getUniversalQuranInclusionInstruction()
         : '';
 
+      // Include Google Search instruction ONLY when real-time data is required
+      const includeSearchInstruction = !!(internetData && internetData.needsInternetData);
+      const googleSearchSection = includeSearchInstruction ? `
+
+## 🔍 GOOGLE SEARCH INSTRUCTION
+If the query requires current information (news, prices, dates, events), please use Google Search to find the most up-to-date information before responding.` : '';
+
       const combinedPrompt = `# IslamicAI Response System 🤖
 
 ## 🚨 CRITICAL SECURITY DIRECTIVE
@@ -184,8 +208,7 @@ ${finalPrompt}${universalQuranInstruction}
 5. ✅ Address question directly
 6. 🔁 MAINTAIN CONVERSATION CONTEXT: Respond directly to the user's message while considering the conversation history provided in the context section
 
-## 🔍 GOOGLE SEARCH INSTRUCTION
-If the query requires current information (news, prices, dates, events), please use Google Search to find the most up-to-date information before responding.`;
+${googleSearchSection}`;
 
       // Performance optimized request body
       const requestBody = {
@@ -196,10 +219,10 @@ If the query requires current information (news, prices, dates, events), please 
           }
         ],
         generationConfig: {
-          temperature: 0.5, // Reduced for faster processing
-          topK: 20, // Reduced for faster processing
-          topP: 0.9, // Reduced for faster processing
-          maxOutputTokens: 512, // Reduced for faster responses
+          temperature: terse ? 0.2 : 0.4,
+          topK: terse ? 10 : 20,
+          topP: 0.85,
+          maxOutputTokens: Math.max(64, Math.min(1024, maxTokens)),
           responseMimeType: "text/plain",
           thinkingConfig: {
             thinkingBudget: 0
@@ -207,7 +230,7 @@ If the query requires current information (news, prices, dates, events), please 
         },
         safetySettings: [
           {
-            category: "HARM_CATEGORY_HARASSMENT",
+            category: "HARM_CATEGORY_HATE_SPEECH",
             threshold: "BLOCK_LOW_AND_ABOVE"
           },
           {
@@ -219,11 +242,9 @@ If the query requires current information (news, prices, dates, events), please 
             threshold: "BLOCK_LOW_AND_ABOVE"
           }
         ],
-        tools: [
-          {
-            googleSearch: {}
-          }
-        ]
+        tools: includeSearchInstruction ? [
+          { googleSearch: {} }
+        ] : []
       };
 
       // Use streaming by default unless explicitly disabled
@@ -241,10 +262,13 @@ If the query requires current information (news, prices, dates, events), please 
         if (data.candidates && data.candidates[0] && data.candidates[0].content) {
           let responseText = data.candidates[0].content.parts[0].text;
           
-          // Post-process response for better formatting
+          // Post-process and compress response
           responseText = this.postProcessResponse(responseText, queryType, languageInfo);
+          responseText = this._enforceBrevity(responseText, maxSentences);
           
           console.log(`Direct response generated successfully, length: ${responseText.length}`);
+          // Store in cache
+          this._putInCache(cacheKey, responseText);
           return responseText;
         } else {
           console.error('Unexpected response format:', data);
@@ -368,27 +392,8 @@ Aaj aap kisi Islamic topic par discuss karna chahenge?`,
       }
     }
     
-    // For all queries except simple greetings, ensure comprehensive structure
-    if (queryType !== 'general' || cleanedText.length > 200) {
-      // Check if response has comprehensive structure
-      const hasComprehensiveStructure = 
-        cleanedText.includes('## 📌') || 
-        cleanedText.includes('## 📚') || 
-        cleanedText.includes('## 💡') || 
-        cleanedText.includes('## 🌟') ||
-        cleanedText.includes('## Key Takeaways') ||
-        cleanedText.includes('## Final Reflection');
-      
-      // If not comprehensive, encourage more detailed response
-      if (!hasComprehensiveStructure && cleanedText.length > 300) {
-        // Add a note to encourage more comprehensive response
-        cleanedText += `
-
-## 📝 Additional Insights
-
-For a more comprehensive understanding of this topic, consider exploring related aspects such as historical context, different scholarly perspectives, and practical applications in daily life. May Allah increase us in knowledge and understanding. 🤲`;
-      }
-    }
+    // Remove any previously appended "Additional Insights" sections (not required)
+    cleanedText = cleanedText.replace(/\n+## 📝 Additional Insights[\s\S]*$/m, '').trim();
     
     // Ensure proper ending with language-appropriate "Allah knows best" for appropriate query types
     const needsFaithEnding = queryType === 'debate' || queryType === 'aqeedah' || queryType === 'general';
@@ -586,6 +591,7 @@ ${languageInstruction}
     const apiKeyManager = this.apiKeyManager;
     const streamingUrl = this.streamingUrl;
     const postProcessResponse = this.postProcessResponse.bind(this);
+    const enforceBrevity = this._enforceBrevity.bind(this);
     const streamTextInChunks = this.streamTextInChunks.bind(this);
     const createStreamingChunk = this.createStreamingChunk.bind(this);
 
@@ -655,6 +661,7 @@ ${languageInstruction}
               }
               if (combined) {
                 let finalText = postProcessResponse(combined, 'general', {});
+                finalText = enforceBrevity(finalText, 8);
                 const streamChunk = createStreamingChunk({ type: 'content', content: finalText, metadata: { timestamp: new Date().toISOString() } });
                 controller.enqueue(new TextEncoder().encode(streamChunk));
               } else {
@@ -759,7 +766,7 @@ ${languageInstruction}
 
           // Post-process the aggregated response at the end (whether streamed or parsed once)
           if (aggregated) {
-            const finalText = postProcessResponse(aggregated, 'general', {});
+            const finalText = enforceBrevity(postProcessResponse(aggregated, 'general', {}), 8);
             if (finalText !== aggregated) {
               const delta = finalText.slice(aggregated.length);
               if (delta) emitContent(delta);
@@ -942,5 +949,43 @@ ${languageInstruction}
         throw error;
       }
     }
+  }
+
+  // Enforce brevity by limiting sentences and trimming whitespace
+  _enforceBrevity(text, maxSentences = 6) {
+    try {
+      if (!text) return text;
+      const normalized = String(text).replace(/\s+/g, ' ').trim();
+      if (maxSentences <= 0) return normalized;
+      const sentences = normalized.split(/(?<=[\.\!\?])\s+/);
+      if (sentences.length <= maxSentences) return normalized;
+      const compact = sentences.slice(0, maxSentences).join(' ').trim();
+      return compact;
+    } catch (_) {
+      return text;
+    }
+  }
+
+  // LRU cache helpers
+  _getFromCache(key) {
+    if (!this.responseCache.has(key)) return null;
+    const value = this.responseCache.get(key);
+    // Refresh LRU order
+    this.responseCache.delete(key);
+    this.responseCache.set(key, value);
+    return value;
+  }
+
+  _putInCache(key, value) {
+    try {
+      if (this.responseCache.has(key)) {
+        this.responseCache.delete(key);
+      }
+      this.responseCache.set(key, value);
+      if (this.responseCache.size > this.cacheCapacity) {
+        const firstKey = this.responseCache.keys().next().value;
+        this.responseCache.delete(firstKey);
+      }
+    } catch (_) {}
   }
 }
