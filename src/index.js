@@ -2,6 +2,7 @@ import { GeminiAPI } from './gemini-api.js';
 import { AdvancedSessionManager } from './advanced-session-manager.js';
 import { CommandHandler } from './command-handler.js';
 import { AdaptiveLanguageSystem } from './adaptive-language-system.js';
+import { PrivacyFilter } from './privacy-filter.js';
 
 export default {
   /**
@@ -69,6 +70,10 @@ export default {
         const geminiAPI = new GeminiAPI(apiKeys);
         const keyStats = geminiAPI.getKeyStats();
         
+        // Use privacy filter to sanitize health check response
+        const privacyFilter = new PrivacyFilter();
+        const sanitizedKeyStats = privacyFilter.sanitizeSessionData(keyStats);
+        
         return new Response(JSON.stringify({
           status: 'healthy',
           streaming: 'enabled_by_default',
@@ -77,7 +82,7 @@ export default {
           apiKeys: {
             total: apiKeys.length,
             available: geminiAPI.apiKeyManager.getAvailableKeyCount(),
-            stats: keyStats
+            stats: sanitizedKeyStats
           },
           defaultStreaming: {
             enabled: env.DEFAULT_STREAMING_ENABLED === 'true',
@@ -99,20 +104,24 @@ export default {
         try {
           const apiKeys = this.getAPIKeys(env);
           const geminiAPI = new GeminiAPI(apiKeys);
+          const privacyFilter = new PrivacyFilter(); // Add privacy filter
           
           // Test internet search capability
           const testQuery = 'current islamic calendar 2024';
           const internetData = await geminiAPI.internetProcessor.processQuery(testQuery);
           
+          // Sanitize internet data before returning
+          const sanitizedInternetData = privacyFilter.sanitizeSessionData(internetData);
+          
           return new Response(JSON.stringify({
             status: 'internet_test_completed',
-            internetAccess: internetData.needsInternetData ? 'working' : 'limited',
+            internetAccess: sanitizedInternetData.needsInternetData ? 'working' : 'limited',
             testQuery: testQuery,
-            searchResults: internetData.data ? {
-              sources: internetData.data.sources,
-              resultsCount: internetData.data.results.length,
-              islamicRelevance: internetData.data.islamicRelevance,
-              dataQuality: internetData.data.dataQuality
+            searchResults: sanitizedInternetData.data ? {
+              sources: sanitizedInternetData.data.sources,
+              resultsCount: sanitizedInternetData.data.results.length,
+              islamicRelevance: sanitizedInternetData.data.islamicRelevance,
+              dataQuality: sanitizedInternetData.data.dataQuality
             } : null,
             processingStats: geminiAPI.internetProcessor.getProcessingStats(),
             timestamp: new Date().toISOString()
@@ -124,9 +133,13 @@ export default {
             },
           });
         } catch (error) {
+          // Use privacy filter for error messages
+          const privacyFilter = new PrivacyFilter();
+          const safeErrorMessage = privacyFilter.filterResponse(error.message);
+          
           return new Response(JSON.stringify({
             status: 'internet_test_failed',
-            error: error.message,
+            error: safeErrorMessage,
             internetAccess: 'failed',
             timestamp: new Date().toISOString()
           }), {
@@ -161,6 +174,10 @@ export default {
 
     } catch (error) {
       console.error('Worker error:', error);
+      
+      // Use privacy filter for error messages
+      const privacyFilter = new PrivacyFilter();
+      const safeErrorMessage = privacyFilter.filterResponse(error.message);
       
       // Fallback response
       const fallbackResponse = {
@@ -282,6 +299,7 @@ export default {
     const sessionManager = new AdvancedSessionManager(env.CHAT_SESSIONS);
     const commandHandler = new CommandHandler();
     const adaptiveLanguageSystem = new AdaptiveLanguageSystem();
+    const privacyFilter = new PrivacyFilter(); // Add privacy filter
     
     // Use multiple API keys with load balancing
     const apiKeys = this.getAPIKeys(env);
@@ -299,7 +317,12 @@ export default {
     // Check for commands
     if (userMessage.startsWith('/')) {
       const commandResult = await commandHandler.handleCommand(userMessage, sessionId, sessionManager);
-      return new Response(JSON.stringify(commandResult), {
+      // Filter command results
+      const filteredCommandResult = {
+        ...commandResult,
+        reply: privacyFilter.filterResponse(commandResult.reply)
+      };
+      return new Response(JSON.stringify(filteredCommandResult), {
         status: 200,
         headers: { 
           'Content-Type': 'application/json',
@@ -385,7 +408,8 @@ export default {
           streamingOptions,
           sessionManager,
           userIP,
-          locationInfo // Pass location info to streaming handler
+          locationInfo, // Pass location info to streaming handler
+          privacyFilter // Pass privacy filter to streaming handler
         );
       } else {
         console.log('Using direct response (streaming disabled)');
@@ -408,20 +432,23 @@ export default {
           locationInfo // Pass location info to Gemini API
         );
         
+        // Filter the response before sending to user
+        const filteredResponse = privacyFilter.filterResponse(geminiResponse);
+        
         // Process message and update session with intelligent memory
-        const sessionData = await sessionManager.processMessage(sessionId, userMessage, geminiResponse);
+        const sessionData = await sessionManager.processMessage(sessionId, userMessage, filteredResponse);
 
         // Prepare response (compact if terse)
         const response = brevityPrefs.terse ? {
           session_id: sessionId,
-          reply: geminiResponse,
+          reply: filteredResponse,
           streaming: false,
           timestamp: new Date().toISOString()
         } : {
           session_id: sessionId,
-          reply: geminiResponse,
+          reply: filteredResponse,
           history_summary: sessionManager.getHistorySummary(sessionData.history),
-          user_profile: sessionData.userProfile,
+          user_profile: privacyFilter.sanitizeSessionData(sessionData.userProfile),
           memory_count: sessionData.memories.length,
           streaming: false,
           api_keys_used: apiKeys.length,
@@ -430,7 +457,7 @@ export default {
           location_info: locationInfo,
           timestamp: new Date().toISOString(),
           response_metadata: {
-            response_length: geminiResponse.length,
+            response_length: filteredResponse.length,
             language_detected: enhancedLanguageInfo.detected_language,
             adaptation_type: enhancedLanguageInfo.adaptation_type,
             internet_data_used: internetData ? internetData.needsInternetData : false,
@@ -438,7 +465,7 @@ export default {
           }
         };
 
-        console.log(`Direct response generated for session ${sessionId}, length: ${geminiResponse.length}`);
+        console.log(`Direct response generated for session ${sessionId}, length: ${filteredResponse.length}`);
 
         return new Response(JSON.stringify(response), {
           status: 200,
@@ -452,11 +479,14 @@ export default {
     } catch (error) {
       console.error('Error generating response:', error);
       
+      // Use privacy filter for error messages
+      const safeErrorMessage = privacyFilter.filterResponse(error.message);
+      
       // Return error response
       const errorResponse = {
         session_id: sessionId,
         reply: "Sorry, I'm having trouble processing your request right now. Please try again.",
-        error: error.message,
+        error: safeErrorMessage,
         streaming: streamingOptions.enableStreaming,
         api_keys_available: apiKeys.length,
         language_info: enhancedLanguageInfo // Include language info in error response
@@ -483,9 +513,10 @@ export default {
    * @param {AdvancedSessionManager} sessionManager - Session manager
    * @param {string} userIP - User's IP address for location detection
    * @param {Object} locationInfo - User's location information
+   * @param {PrivacyFilter} privacyFilter - Privacy filter instance
    * @returns {Response} Streaming response
    */
-  async handleStreamingResponse(geminiAPI, sessionId, userMessage, contextualPrompt, enhancedLanguageInfo, streamingOptions, sessionManager, userIP, locationInfo) {
+  async handleStreamingResponse(geminiAPI, sessionId, userMessage, contextualPrompt, enhancedLanguageInfo, streamingOptions, sessionManager, userIP, locationInfo, privacyFilter) {
     try {
       console.log(`Starting streaming response for session ${sessionId} with ${geminiAPI.apiKeyManager.getAvailableKeyCount()} API keys`);
       
@@ -522,8 +553,24 @@ export default {
               // Parse the chunk
               const chunkData = parseStreamingChunk(value);
               
+              // Filter content if it's a content chunk
+              if (chunkData && chunkData.type === 'content') {
+                const filteredContent = privacyFilter.filterResponse(chunkData.content);
+                fullResponse += filteredContent;
+                
+                // Create a new filtered chunk
+                const filteredChunk = `data: ${JSON.stringify({
+                  type: 'content',
+                  content: filteredContent
+                })}\n\n`;
+                controller.enqueue(new TextEncoder().encode(filteredChunk));
+              } else {
+                // Forward non-content chunks as is
+                controller.enqueue(value);
+              }
+              
               // Send metadata once at the beginning (skip if terse)
-              if (!metadataSent && chunkData.type !== 'start') {
+              if (!metadataSent && chunkData && chunkData.type !== 'start') {
                 if (!(enhancedLanguageInfo && enhancedLanguageInfo.response_prefs && enhancedLanguageInfo.response_prefs.terse)) {
                   const metadataChunk = `data: ${JSON.stringify({
                     type: 'metadata',
@@ -544,21 +591,22 @@ export default {
                 metadataSent = true;
               }
               
-              if (chunkData && chunkData.type === 'content') {
-                fullResponse += chunkData.content;
+              // Forward the chunk (already handled above for content chunks)
+              if (chunkData && chunkData.type !== 'content') {
+                controller.enqueue(value);
               }
-              
-              // Forward the chunk
-              controller.enqueue(value);
             }
             
             // Send completion metadata (skip if terse)
             if (!(enhancedLanguageInfo && enhancedLanguageInfo.response_prefs && enhancedLanguageInfo.response_prefs.terse)) {
+              // Filter the full response for any sensitive information
+              const filteredFullResponse = privacyFilter.filterResponse(fullResponse);
+              
               const completionChunk = `data: ${JSON.stringify({
                 type: 'completion',
                 content: {
                   session_id: sessionId,
-                  response_length: fullResponse.length,
+                  response_length: filteredFullResponse.length,
                   timestamp: new Date().toISOString(),
                   message: 'Response completed successfully ✅',
                   location_info: locationInfo
@@ -570,8 +618,10 @@ export default {
             // Process the complete message for session management
             if (fullResponse.trim()) {
               try {
-                await sessionManager.processMessage(sessionId, userMessage, fullResponse);
-                console.log(`Streaming session updated for ${sessionId}, response length: ${fullResponse.length}`);
+                // Filter the full response before storing in session
+                const filteredFullResponse = privacyFilter.filterResponse(fullResponse);
+                await sessionManager.processMessage(sessionId, userMessage, filteredFullResponse);
+                console.log(`Streaming session updated for ${sessionId}, response length: ${filteredFullResponse.length}`);
               } catch (sessionError) {
                 console.error('Session processing error:', sessionError);
               }
@@ -579,7 +629,9 @@ export default {
             
           } catch (error) {
             console.error('Streaming processing error:', error);
-            const errorChunk = createErrorChunk('Streaming error occurred ⚠️');
+            // Use privacy filter for error messages
+            const safeErrorMessage = privacyFilter.filterResponse(error.message);
+            const errorChunk = createErrorChunk(safeErrorMessage);
             controller.enqueue(new TextEncoder().encode(errorChunk));
           } finally {
             controller.close();
@@ -599,26 +651,17 @@ export default {
       });
 
     } catch (error) {
-      console.error('Streaming handler error:', error);
+      console.error('Streaming response error:', error);
+      // Use privacy filter for error messages
+      const safeErrorMessage = privacyFilter.filterResponse(error.message);
       
-      // Capture method to avoid 'this' context issues
-      const createErrorChunk = this.createErrorChunk;
-      
-      // Return error as streaming response
-      const errorStream = new ReadableStream({
-        start: (controller) => {
-          const errorChunk = createErrorChunk('Streaming service temporarily unavailable ⚠️');
-          controller.enqueue(new TextEncoder().encode(errorChunk));
-          controller.close();
-        }
-      });
-
-      return new Response(errorStream, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+      return new Response(JSON.stringify({
+        error: safeErrorMessage,
+        session_id: sessionId
+      }), {
+        status: 500,
+        headers: { 
+          'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
         },
       });

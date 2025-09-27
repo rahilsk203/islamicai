@@ -1,4 +1,5 @@
 import { IntelligentMemory } from './intelligent-memory.js';
+import { PrivacyFilter } from './privacy-filter.js';
 
 export class AdvancedSessionManager {
   constructor(kvNamespace) {
@@ -6,6 +7,7 @@ export class AdvancedSessionManager {
     this.maxHistoryLength = 10; // Further reduced for better performance
     this.maxMemoryItems = 20; // Further reduced for better performance
     this.memory = new IntelligentMemory();
+    this.privacyFilter = new PrivacyFilter(); // Add privacy filter
     
     // Simplified session management for better performance
     this.sessionCache = new Map();
@@ -603,6 +605,9 @@ export class AdvancedSessionManager {
   }
 
   async processMessage(sessionId, userMessage, aiResponse) {
+    // Filter the AI response to ensure no sensitive information is stored
+    const filteredResponse = this.privacyFilter.filterResponse(aiResponse);
+    
     const sessionData = await this.getSessionData(sessionId);
     
     // Add messages to history
@@ -615,7 +620,7 @@ export class AdvancedSessionManager {
     
     const aiMessageObj = {
       role: 'assistant',
-      content: aiResponse,
+      content: filteredResponse, // Use filtered response
       timestamp: new Date().toISOString(),
       session_id: sessionId
     };
@@ -639,10 +644,10 @@ export class AdvancedSessionManager {
     sessionData.memories.push(...newMemories);
     
     // Update conversation context
-    this.updateConversationContext(sessionData.conversationContext, userMessage, aiResponse);
+    this.updateConversationContext(sessionData.conversationContext, userMessage, filteredResponse);
     
     // Track conversation flow
-    this.updateConversationFlow(sessionData.conversationFlow, userMessage, aiResponse);
+    this.updateConversationFlow(sessionData.conversationFlow, userMessage, filteredResponse);
     
     // Maintain history length with DSA optimization
     if (sessionData.history.length > this.maxHistoryLength) {
