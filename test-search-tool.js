@@ -37,49 +37,17 @@ async function testSearchToolInclusion() {
     }
   ];
   
-  // Mock internet data processor result
-  const mockInternetProcessor = {
-    processQuery: async (userMessage) => {
-      const lowerMessage = userMessage.toLowerCase();
-      
-      // Determine if search is needed based on message content
-      const needsSearch = 
-        lowerMessage.includes('current') ||
-        lowerMessage.includes('today') ||
-        lowerMessage.includes('price') ||
-        lowerMessage.includes('news') ||
-        lowerMessage.includes('prayer time');
-      
-      // Determine reason based on message content
-      let reason = 'no_search_needed';
-      if (lowerMessage.includes('price')) reason = 'price_query';
-      else if (lowerMessage.includes('news')) reason = 'current_info';
-      else if (lowerMessage.includes('prayer time')) reason = 'location_prayer_times';
-      else if (lowerMessage.includes('current')) reason = 'current_info';
-      else if (lowerMessage.includes('today')) reason = 'current_info';
-      
-      return {
-        needsInternetData: needsSearch,
-        reason: reason,
-        data: null,
-        enhancedPrompt: needsSearch ? `USER QUERY REQUIRES REAL-TIME DATA: ${userMessage}` : ''
-      };
-    }
-  };
-  
-  // Replace the internet processor with our mock
-  geminiAPI.internetProcessor = mockInternetProcessor;
-  
   // Test each case
   for (const testCase of testCases) {
     console.log(`Testing: ${testCase.name}`);
     console.log(`Message: "${testCase.message}"`);
     
     try {
-      // Mock the API request to just return the request body
+      // Mock the API request to capture the request body
+      let capturedRequestBody = null;
       geminiAPI._makeAPIRequestWithRetryToUrl = async (requestBody) => {
+        capturedRequestBody = requestBody;
         return {
-          requestBody: requestBody,
           candidates: [{
             content: {
               parts: [{
@@ -101,7 +69,7 @@ async function testSearchToolInclusion() {
       );
       
       // Check if search tool was included
-      const requestBody = response.requestBody;
+      const requestBody = capturedRequestBody;
       const hasSearchTool = requestBody.tools && requestBody.tools.length > 0 && 
                            requestBody.tools.some(tool => tool.googleSearch);
       

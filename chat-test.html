@@ -179,7 +179,7 @@
 
     <script>
         // Configuration - Update this to match your backend URL
-        const BACKEND_URL = 'https://islamicai.sohal70760.workers.dev'; // Default for local development
+        const BACKEND_URL = 'http://127.0.0.1:8787'; // Default for local development
         
         let isConnected = false;
         let sessionId = 'test-session-' + Date.now();
@@ -189,7 +189,7 @@
         
         // DOM Elements
         const chatMessages = document.getElementById('chat-messages');
-        const userInput = document.getElementById('user-input');
+        const userInput = document.getElementById('ushttpser-input');
         const sendBtn = document.getElementById('send-btn');
         const statusDiv = document.getElementById('status');
         const sessionIdSpan = document.getElementById('session-id');
