@@ -69,6 +69,12 @@ export class InternetDataProcessor {
     // Simple in-memory cache for frequently requested data
     this.dataCache = new Map();
     this.cacheTimestamps = new Map();
+    this.performanceMetrics = {
+      totalQueries: 0,
+      cacheHits: 0,
+      searchTriggers: 0,
+      averageProcessingTime: 0
+    };
   }
 
   /**
@@ -77,11 +83,13 @@ export class InternetDataProcessor {
    * @returns {Object|null} Cached data or null
    */
   checkCache(query) {
+    this.performanceMetrics.totalQueries++;
     const cacheKey = this.generateCacheKey(query);
     if (this.dataCache.has(cacheKey)) {
       const timestamp = this.cacheTimestamps.get(cacheKey);
       if (Date.now() - timestamp < this.processingRules.cacheTTL) {
         console.log('Cache hit for query:', query);
+        this.performanceMetrics.cacheHits++;
         return this.dataCache.get(cacheKey);
       } else {
         // Expired cache, remove it
@@ -134,6 +142,7 @@ export class InternetDataProcessor {
    * @returns {Promise<Object>} Processing decision and data
    */
   async processQuery(userMessage, context = {}, userIP = null) {
+    const startTime = Date.now();
     try {
       console.log('Processing query for internet data needs:', userMessage);
       
@@ -146,9 +155,10 @@ export class InternetDataProcessor {
         
         if (shouldTriggerSearch) {
           console.log('High-confidence query, will trigger Gemini Google Search');
+          this.performanceMetrics.searchTriggers++;
           
           // Return a minimal result that indicates Gemini should do the search
-          return {
+          const result = {
             needsInternetData: true,
             reason: 'gemini_search_recommended',
             data: null,
@@ -156,15 +166,21 @@ export class InternetDataProcessor {
             searchResults: null,
             fromGeminiSearch: true
           };
+          this.storeInCache(userMessage, result); // Cache the result
+          this._updatePerformanceMetrics(startTime);
+          return result;
         } else {
           // For low-confidence queries, do minimal processing
           console.log('Low-confidence query, minimal processing');
-          return {
+          const result = {
             needsInternetData: false,
             reason: 'low_confidence_for_search',
             data: null,
             enhancedPrompt: ''
           };
+          this.storeInCache(userMessage, result); // Cache the result
+          this._updatePerformanceMetrics(startTime);
+          return result;
         }
       }
       
@@ -172,6 +188,7 @@ export class InternetDataProcessor {
       // Check cache first for performance
       const cachedResult = this.checkCache(userMessage);
       if (cachedResult) {
+        this._updatePerformanceMetrics(startTime);
         return cachedResult;
       }
       
@@ -182,6 +199,7 @@ export class InternetDataProcessor {
           console.log('Query needs Al Jazeera news integration:', newsDecision.reason);
           const result = await this.processAlJazeeraNewsIntegration(userMessage, context, userIP);
           this.storeInCache(userMessage, result); // Cache the result
+          this._updatePerformanceMetrics(startTime);
           return result;
         }
       }
@@ -225,6 +243,7 @@ export class InternetDataProcessor {
         console.log('Detected prayer time query with user IP, getting location-based prayer times');
         const result = await this.processLocationBasedPrayerTimes(userMessage, userIP, context);
         this.storeInCache(userMessage, result); // Cache the result
+        this._updatePerformanceMetrics(startTime);
         return result;
       }
       
@@ -236,10 +255,12 @@ export class InternetDataProcessor {
           enhancedPrompt: ''
         };
         this.storeInCache(userMessage, result); // Cache the result
+        this._updatePerformanceMetrics(startTime);
         return result;
       }
 
       console.log(`Query needs internet search: ${searchDecision.reason}`);
+      this.performanceMetrics.searchTriggers++;
       
       // Use advanced web search for more intelligent queries with optimized options
       let searchResults;
@@ -275,6 +296,7 @@ export class InternetDataProcessor {
           enhancedPrompt: ''
         };
         this.storeInCache(userMessage, result); // Cache the result
+        this._updatePerformanceMetrics(startTime);
         return result;
       }
 
@@ -301,6 +323,7 @@ export class InternetDataProcessor {
       
       // Cache the result for performance
       this.storeInCache(userMessage, result);
+      this._updatePerformanceMetrics(startTime);
       
       return result;
 
@@ -314,8 +337,42 @@ export class InternetDataProcessor {
         enhancedPrompt: ''
       };
       this.storeInCache(userMessage, result); // Cache the result
+      this._updatePerformanceMetrics(startTime);
       return result;
     }
+  }
+
+  /**
+   * Update performance metrics
+   * @param {number} startTime - Processing start time
+   */
+  _updatePerformanceMetrics(startTime) {
+    const processingTime = Date.now() - startTime;
+    const totalQueries = this.performanceMetrics.totalQueries;
+    
+    // Update average processing time
+    this.performanceMetrics.averageProcessingTime = 
+      ((this.performanceMetrics.averageProcessingTime * (totalQueries - 1)) + processingTime) / totalQueries;
+  }
+
+  /**
+   * Get performance metrics
+   * @returns {Object} Performance metrics
+   */
+  getPerformanceMetrics() {
+    return { ...this.performanceMetrics };
+  }
+
+  /**
+   * Reset performance metrics
+   */
+  resetPerformanceMetrics() {
+    this.performanceMetrics = {
+      totalQueries: 0,
+      cacheHits: 0,
+      searchTriggers: 0,
+      averageProcessingTime: 0
+    };
   }
 
   /**

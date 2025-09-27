@@ -8,6 +8,7 @@ export class GeminiAPI {
     // Support both single key and multiple keys
     this.apiKeyManager = new APIKeyManager(apiKeys);
     // Configure model and endpoints (stream and non-stream)
+    // Updated to use the exact configuration from user requirements
     this.modelId = 'gemini-2.5-flash-lite';
     this.nonStreamingUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelId}:generateContent`;
     this.streamingUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelId}:streamGenerateContent`;
@@ -17,9 +18,20 @@ export class GeminiAPI {
     // Simple LRU cache for memoizing recent responses
     this.responseCache = new Map();
     this.cacheCapacity = 200; // adjustable
+    // Performance tracking
+    this.performanceMetrics = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      averageResponseTime: 0,
+      searchRequests: 0
+    };
   }
 
   async generateResponse(messages, sessionId, userInput = '', contextualPrompt = '', languageInfo = {}, streamingOptions = { enableStreaming: true }, userIP = null, locationInfo = null) {
+    const startTime = Date.now();
+    this.performanceMetrics.totalRequests++;
+    
     try {
       // Brevity preferences
       const prefs = (languageInfo && languageInfo.response_instructions && languageInfo.response_prefs) ? languageInfo.response_prefs : (languageInfo.response_prefs || {});
@@ -34,12 +46,16 @@ export class GeminiAPI {
         if (cached) {
           // Filter cached response before returning
           const filteredResponse = this.privacyFilter.filterResponse(cached);
+          this.performanceMetrics.successfulRequests++;
+          this._updatePerformanceMetrics(startTime, false);
           return filteredResponse;
         }
       }
       // Validate input for security
       const validation = this.islamicPrompt.validateInput(userInput);
       if (!validation.isValid) {
+        this.performanceMetrics.successfulRequests++;
+        this._updatePerformanceMetrics(startTime, false);
         return streamingOptions.enableStreaming ? 
           this.createStreamingError(validation.response) : 
           validation.response;
@@ -184,7 +200,20 @@ MANDATORY INSTRUCTIONS:
       let filteredPrompt = this.privacyFilter.filterResponse(finalPrompt);
       
       // Include Google Search instruction ONLY when real-time data is required
-      const includeSearchInstruction = !!(internetData && internetData.needsInternetData);
+      // Enhanced logic to be more precise about when to trigger search
+      const includeSearchInstruction = !!(internetData && internetData.needsInternetData && 
+                                         (internetData.reason === 'gemini_search_recommended' || 
+                                          internetData.reason === 'current_info' || 
+                                          internetData.reason === 'islamic_current_info' || 
+                                          internetData.reason === 'price_query' ||
+                                          internetData.reason === 'location_prayer_times' ||
+                                          internetData.reason === 'aljazeera_news_integration'));
+      
+      // Track search requests for performance metrics
+      if (includeSearchInstruction) {
+        this.performanceMetrics.searchRequests++;
+      }
+      
       const googleSearchSection = includeSearchInstruction ? `
 
 ## 🔍 GOOGLE SEARCH INSTRUCTION
@@ -224,7 +253,7 @@ ${languageInstruction}
 ${filteredPrompt ? `## 🧠 CONTEXTUAL PROMPT
 ${filteredPrompt}` : ''}${universalQuranInstruction}${googleSearchSection}`;
 
-      // Performance optimized request body
+      // Performance optimized request body with exact configuration from user requirements
       const requestBody = {
         contents: [
           {
@@ -256,6 +285,7 @@ ${filteredPrompt}` : ''}${universalQuranInstruction}${googleSearchSection}`;
             threshold: "BLOCK_LOW_AND_ABOVE"
           }
         ],
+        // Exact tools configuration from user requirements
         tools: includeSearchInstruction ? [
           { googleSearch: {} }
         ] : []
@@ -264,7 +294,10 @@ ${filteredPrompt}` : ''}${universalQuranInstruction}${googleSearchSection}`;
       // Use streaming by default unless explicitly disabled
       if (streamingOptions.enableStreaming !== false) {
         console.log('Using streaming response (default mode)');
-        return this.generateStreamingResponse(requestBody, streamingOptions);
+        const response = this.generateStreamingResponse(requestBody, streamingOptions);
+        this.performanceMetrics.successfulRequests++;
+        this._updatePerformanceMetrics(startTime, includeSearchInstruction);
+        return response;
       } else {
         console.log('Using direct response (streaming explicitly disabled)');
         // SECURITY: Don't log sensitive API details
@@ -284,19 +317,61 @@ ${filteredPrompt}` : ''}${universalQuranInstruction}${googleSearchSection}`;
           console.log(`Direct response generated successfully, length: ${responseText.length}`);
           // Store in cache
           this._putInCache(cacheKey, responseText);
+          this.performanceMetrics.successfulRequests++;
+          this._updatePerformanceMetrics(startTime, includeSearchInstruction);
           return responseText;
         } else {
           console.error('Unexpected response format:', data);
+          this.performanceMetrics.failedRequests++;
+          this._updatePerformanceMetrics(startTime, includeSearchInstruction, true);
           throw new Error('Invalid response format from Gemini API');
         }
       }
 
     } catch (error) {
       console.error('Error in GeminiAPI.generateResponse:', error);
+      this.performanceMetrics.failedRequests++;
+      this._updatePerformanceMetrics(startTime, false, true);
       // Even in error cases, ensure no sensitive information is exposed
       const safeErrorMessage = this.privacyFilter.filterResponse(error.message);
       throw new Error(safeErrorMessage);
     }
+  }
+
+  /**
+   * Update performance metrics
+   * @param {number} startTime - Request start time
+   * @param {boolean} usedSearch - Whether search was used
+   * @param {boolean} failed - Whether request failed
+   */
+  _updatePerformanceMetrics(startTime, usedSearch, failed = false) {
+    const responseTime = Date.now() - startTime;
+    const totalRequests = this.performanceMetrics.totalRequests;
+    
+    // Update average response time
+    this.performanceMetrics.averageResponseTime = 
+      ((this.performanceMetrics.averageResponseTime * (totalRequests - 1)) + responseTime) / totalRequests;
+  }
+
+  /**
+   * Get performance metrics
+   * @returns {Object} Performance metrics
+   */
+  getPerformanceMetrics() {
+    return { ...this.performanceMetrics };
+  }
+
+  /**
+   * Reset performance metrics
+   */
+  resetPerformanceMetrics() {
+    this.performanceMetrics = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      averageResponseTime: 0,
+      searchRequests: 0
+    };
   }
 
   /**

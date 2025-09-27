@@ -5,10 +5,11 @@ export class APIKeyManager {
   constructor(apiKeys) {
     this.apiKeys = Array.isArray(apiKeys) ? apiKeys : [apiKeys];
     this.currentIndex = 0;
-    this.failedKeys = new Set();
+    this.failedKeys = new Map(); // Use Map to track failure times
     this.keyStats = new Map();
     this.maxRetries = 3;
     this.retryDelay = 1000; // 1 second
+    this.failureCooldown = 5 * 60 * 1000; // 5 minutes cooldown for failed keys
   }
 
   /**
@@ -16,13 +17,26 @@ export class APIKeyManager {
    * @returns {string} Available API key
    */
   getNextKey() {
-    // Filter out failed keys
-    const availableKeys = this.apiKeys.filter(key => !this.failedKeys.has(key));
+    const now = Date.now();
+    
+    // Filter out failed keys that are still in cooldown
+    const availableKeys = this.apiKeys.filter(key => {
+      const failureTime = this.failedKeys.get(key);
+      return !failureTime || (now - failureTime) > this.failureCooldown;
+    });
     
     if (availableKeys.length === 0) {
-      // If all keys failed, reset and try again
-      this.failedKeys.clear();
-      return this.apiKeys[this.currentIndex % this.apiKeys.length];
+      // If all keys are in cooldown, use the one with the oldest failure
+      const oldestFailure = Array.from(this.failedKeys.entries())
+        .reduce((oldest, [key, time]) => (!oldest || time < oldest[1]) ? [key, time] : oldest, null);
+      
+      if (oldestFailure) {
+        console.warn(`All keys in cooldown, using oldest failed key: ${oldestFailure[0].substring(0, 10)}...`);
+        return oldestFailure[0];
+      }
+      
+      // Fallback to first key if something goes wrong
+      return this.apiKeys[0];
     }
 
     // Use round-robin for load balancing
@@ -39,7 +53,7 @@ export class APIKeyManager {
    */
   markKeyFailed(apiKey, reason = 'unknown') {
     console.warn(`API key failed: ${apiKey.substring(0, 10)}... (${reason})`);
-    this.failedKeys.add(apiKey);
+    this.failedKeys.set(apiKey, Date.now());
     
     // Record failure stats
     if (!this.keyStats.has(apiKey)) {
@@ -77,7 +91,10 @@ export class APIKeyManager {
         successRate: data.successes + data.failures > 0 
           ? (data.successes / (data.successes + data.failures) * 100).toFixed(2) + '%'
           : '0%',
-        isActive: !this.failedKeys.has(key)
+        isActive: !this.failedKeys.has(key),
+        failureCooldownRemaining: this.failedKeys.has(key) 
+          ? Math.max(0, this.failureCooldown - (Date.now() - this.failedKeys.get(key)))
+          : 0
       };
     }
     return stats;
@@ -96,7 +113,11 @@ export class APIKeyManager {
    * @returns {number} Number of available keys
    */
   getAvailableKeyCount() {
-    return this.apiKeys.filter(key => !this.failedKeys.has(key)).length;
+    const now = Date.now();
+    return this.apiKeys.filter(key => {
+      const failureTime = this.failedKeys.get(key);
+      return !failureTime || (now - failureTime) > this.failureCooldown;
+    }).length;
   }
 
   /**
