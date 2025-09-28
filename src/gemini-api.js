@@ -39,7 +39,7 @@ export class GeminiAPI {
       const maxTokens = (prefs && prefs.maxTokens) ? prefs.maxTokens : 512;
       const maxSentences = (prefs && prefs.maxSentences) ? prefs.maxSentences : (terse ? 4 : 12);
 
-      // Cache key (normalize input/context) with hashed context to reduce collisions
+      // Enhanced cache key with conversation diversity to prevent repetitive responses
       // Include timestamp for news queries to prevent stale cache
       const isNewsQuery = userInput.toLowerCase().includes('news') || userInput.toLowerCase().includes('bataa') || userInput.toLowerCase().includes('gaza');
       const ctxStr = (contextualPrompt || '').slice(0, 5000);
@@ -50,8 +50,24 @@ export class GeminiAPI {
           return Math.abs(h);
         } catch { return 0; }
       })();
-      const timestamp = isNewsQuery ? Math.floor(Date.now() / (2 * 60 * 1000)) : 0; // 2-minute buckets for news
-      const cacheKey = JSON.stringify({ s: sessionId, q: userInput.trim().slice(0, 512), lang: languageInfo.detected_language, ctxh: ctxHash, terse, maxTokens, loc: locationInfo ? `${locationInfo.city}|${locationInfo.country}` : '', ts: timestamp });
+      
+      // Add conversation turn counter and randomness to prevent repetitive responses
+      const conversationTurn = Math.floor(Date.now() / 10000); // 10-second buckets
+      const responseVariation = Math.floor(Math.random() * 1000); // Random variation
+      const timestamp = isNewsQuery ? Math.floor(Date.now() / (2 * 60 * 1000)) : Math.floor(Date.now() / (30 * 1000)); // 30-second buckets for general queries
+      
+      const cacheKey = JSON.stringify({ 
+        s: sessionId, 
+        q: userInput.trim().slice(0, 512), 
+        lang: languageInfo.detected_language, 
+        ctxh: ctxHash, 
+        terse, 
+        maxTokens, 
+        loc: locationInfo ? `${locationInfo.city}|${locationInfo.country}` : '', 
+        ts: timestamp,
+        turn: conversationTurn,
+        var: responseVariation
+      });
       if (streamingOptions.enableStreaming !== true) {
         const cached = this._getFromCache(cacheKey);
         if (cached) {
@@ -98,6 +114,24 @@ export class GeminiAPI {
       // Add contextual prompt if provided (from session history)
       if (contextualPrompt) {
         finalPrompt = contextualPrompt;
+        
+        // Add response accuracy instructions to prevent off-topic responses
+        finalPrompt += `\n\n**RESPONSE ACCURACY INSTRUCTION:**
+CRITICAL: Respond DIRECTLY and SPECIFICALLY to the user's current question. Do NOT:
+- Repeat previous responses or conversation topics
+- Go off-topic or discuss unrelated subjects
+- Answer questions the user didn't ask
+- Provide generic responses when specific answers are requested
+
+If user asks "kasa hai" (how are you) → respond about your status
+If user asks for time → provide current time
+If user asks for news → provide news
+Stay focused on the user's immediate question only.
+
+**LANGUAGE CONVERSION FOR NEWS:**
+- If user asks for news in Hinglish, convert ALL news content to Hinglish
+- Use natural Hinglish mix: "Latest khabrein", "Jan-maut", "Crisis", "Madad"
+- Maintain Islamic terminology appropriately`;
       }
       
       // Add internet data if available
@@ -229,6 +263,8 @@ If the query requires current information (news, prices, dates, events), please 
 - Include: Current date/time (UTC), 3–5 bullet updates, 2–3 credible sources with titles + URLs
 - Avoid: Generic greetings or unrelated background
 - If data is limited: Say so briefly and provide the best-available summary
+- LANGUAGE CONVERSION: If user asked in Hinglish, convert ALL news content to Hinglish
+- Hinglish News Style: Use natural mix like "Latest khabrein", "Jan-maut", "Crisis", "Madad"
 ` : '';
 
       // Cap prompt size to avoid overlong requests
@@ -250,6 +286,13 @@ ${languageInstruction}
 - DETECTED LANGUAGE: ${detectedLanguage}
 - MUST RESPOND IN: ${detectedLanguage}${locationInfo ? `
 - USER LOCATION: ${locationInfo.city}, ${locationInfo.country}` : ''}
+
+## 🔄 LANGUAGE CONVERSION FOR NEWS & INTERNET DATA
+- CRITICAL: When user asks for news or internet data in Hinglish, convert ALL content to Hinglish
+- For Hinglish requests: Use natural Hinglish mix (Hindi + English) for news content
+- Example: "Latest news" → "Latest khabrein", "Breaking news" → "Breaking news", "Updates" → "Updates"
+- Convert technical terms to Hinglish: "Casualties" → "Jan-maut", "Crisis" → "Crisis", "Aid" → "Madad"
+- Maintain Islamic terminology in appropriate language
 
 ## 📚 ISLAMIC SCHOLARSHIP STANDARDS
 - Cite authentic sources (Quran, Hadith, recognized scholars)
@@ -1081,9 +1124,9 @@ ${languageInstruction}
     if (this.responseCache.has(key)) {
       const cached = this.responseCache.get(key);
       // Check if cache is still valid (LRU with time-based expiration)
-      // Shorter TTL for news queries
+      // Shorter TTL for news queries, even shorter for general queries to prevent repetition
       const isNewsQuery = key.includes('news') || key.includes('bataa') || key.includes('gaza');
-      const cacheTTL = isNewsQuery ? 120000 : 300000; // 2 minutes for news, 5 minutes for others
+      const cacheTTL = isNewsQuery ? 120000 : 60000; // 2 minutes for news, 1 minute for others to reduce repetition
       
       if (Date.now() - cached.timestamp < cacheTTL) {
         console.log('Cache hit for key:', key);

@@ -119,9 +119,11 @@ export class AdvancedSessionManager {
       
       // Add instruction to maintain conversation context
       contextualPrompt += '\n**Conversation Context Instructions:**\n';
-      contextualPrompt += '- Respond directly to the user\'s latest message while considering the conversation history\n';
-      contextualPrompt += '- If the user refers to something mentioned earlier in the conversation, acknowledge it appropriately\n';
-      contextualPrompt += '- Maintain natural conversation flow and avoid repeating information unnecessarily\n';
+      contextualPrompt += '- Respond DIRECTLY and SPECIFICALLY to the user\'s current question/message\n';
+      contextualPrompt += '- Do NOT repeat previous responses or go off-topic\n';
+      contextualPrompt += '- If user asks "kasa hai" (how are you), respond about your status, not previous topics\n';
+      contextualPrompt += '- If user asks for time, provide current time, not previous conversation topics\n';
+      contextualPrompt += '- Stay focused on the user\'s immediate question\n';
     }
     
     // Add memory context if available
@@ -230,9 +232,20 @@ export class AdvancedSessionManager {
       });
     }
     
-    // DSA: Add conversation context with topic grouping
+    // DSA: Add conversation context with topic grouping and repetition prevention
     if (sessionData.conversationContext.topics && sessionData.conversationContext.topics.length > 0) {
       contextualPrompt += `\n**Current Conversation Topics:** ${sessionData.conversationContext.topics.join(', ')}\n`;
+      
+      // Add recent response tracking to prevent repetition
+      const recentResponses = sessionData.history
+        .filter(msg => msg.role === 'assistant')
+        .slice(-3)
+        .map(msg => msg.content.slice(0, 100))
+        .join(' | ');
+      
+      if (recentResponses) {
+        contextualPrompt += `\n**Recent Response Context:** Avoid repeating these recent responses: ${recentResponses}\n`;
+      }
     }
     
     // DSA: Add emotional context with trend analysis
@@ -291,6 +304,11 @@ export class AdvancedSessionManager {
       }
       personalizedContext += `- The user prefers ${patterns.responseLength || 'medium'} length responses.\n`;
     }
+    
+    // Add response accuracy guidance
+    personalizedContext += `- Always respond directly to the user's current question.\n`;
+    personalizedContext += `- Do not repeat previous responses or go off-topic.\n`;
+    personalizedContext += `- Stay focused on what the user is asking right now.\n`;
     
     // Add user's emotional journey
     if (sessionData.userProfile.currentEmotionalState) {
