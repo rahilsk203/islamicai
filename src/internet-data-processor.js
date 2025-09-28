@@ -154,7 +154,11 @@ export class InternetDataProcessor {
     const cacheKey = this.generateCacheKey(query);
     if (this.dataCache.has(cacheKey)) {
       const timestamp = this.cacheTimestamps.get(cacheKey);
-      if (Date.now() - timestamp < this.processingRules.cacheTTL) {
+      // Reduce cache TTL for news queries to ensure fresh data
+      const isNewsQuery = this.shouldTriggerGeminiSearch(query);
+      const cacheTTL = isNewsQuery ? (2 * 60 * 1000) : this.processingRules.cacheTTL; // 2 minutes for news, 15 minutes for others
+      
+      if (Date.now() - timestamp < cacheTTL) {
         console.log('Cache hit for query:', query);
         this.performanceMetrics.cacheHits++;
         return this.dataCache.get(cacheKey);
@@ -265,6 +269,8 @@ export class InternetDataProcessor {
       'latest news', 'current news', 'breaking news', 'today news', 'what happened',
       'recent events', 'latest updates', 'current events', 'news today',
       'breaking', 'happening now', 'latest development',
+      'gaza news', 'palestine news', 'israel news', 'middle east news',
+      'war news', 'conflict news', 'crisis news',
       
       // Financial data
       'gold price', 'silver price', 'oil price', 'currency rate', 'exchange rate',
@@ -312,7 +318,8 @@ export class InternetDataProcessor {
       'in my area', 'around here', 'nearby',
       
       // Time-sensitive queries
-      'today', 'now', 'current', 'latest', 'recent', '2024', '2025'
+      'today', 'now', 'current', 'latest', 'recent', '2024', '2025',
+      'bataa', 'batao', 'bata', 'kya hai', 'kya ho raha', 'kya chal raha'
     ];
     
     // Special handling for prayer times - these always need current data

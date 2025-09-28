@@ -8,11 +8,37 @@ name = "islamicai"
 [env.staging]
 name = "islamicai"
 
-# KV Namespace for session storage
+# KV Namespaces for session storage (multi-KV implementation)
 [[kv_namespaces]]
 binding = "CHAT_SESSIONS"
 id = "2fbc40a619a14fef9a07cbfbffa92827"
 preview_id = "2fbc40a619a14fef9a07cbfbffa92827"
+
+[[kv_namespaces]]
+binding = "CHAT_SESSIONS_2"
+id = "26a10e06944043b0b61faeb2a190c2d8"
+preview_id = "26a10e06944043b0b61faeb2a190c2d8"
+
+[[kv_namespaces]]
+binding = "CHAT_SESSIONS_3"
+id = "4c320d63321a422eadf346306c890e16"
+preview_id = "4c320d63321a422eadf346306c890e16"
+
+[[kv_namespaces]]
+binding = "CHAT_SESSIONS_4"
+id = "dc774e72947a41d3b4a89b7fb28415f8"
+preview_id = "dc774e72947a41d3b4a89b7fb28415f8"
+
+# Dedicated KV namespaces for user profile/facts and semantic index (optional)
+[[kv_namespaces]]
+binding = "USER_KV"
+id = "123110900d00468cbb2b6e9eaab49c4e"
+preview_id = "123110900d00468cbb2b6e9eaab49c4e"
+
+[[kv_namespaces]]
+binding = "SEMANTIC_KV"
+id = "887291fedd724276a720b05ec176b3a7"
+preview_id = "887291fedd724276a720b05ec176b3a7"
 
 # Environment variables
 [vars]

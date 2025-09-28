@@ -39,8 +39,19 @@ export class GeminiAPI {
       const maxTokens = (prefs && prefs.maxTokens) ? prefs.maxTokens : 512;
       const maxSentences = (prefs && prefs.maxSentences) ? prefs.maxSentences : (terse ? 4 : 12);
 
-      // Cache key (normalize input/context)
-      const cacheKey = JSON.stringify({ s: sessionId, q: userInput.trim().slice(0, 512), lang: languageInfo.detected_language, ctx: (contextualPrompt || '').slice(0, 512), terse, maxTokens, loc: locationInfo ? `${locationInfo.city}|${locationInfo.country}` : '' });
+      // Cache key (normalize input/context) with hashed context to reduce collisions
+      // Include timestamp for news queries to prevent stale cache
+      const isNewsQuery = userInput.toLowerCase().includes('news') || userInput.toLowerCase().includes('bataa') || userInput.toLowerCase().includes('gaza');
+      const ctxStr = (contextualPrompt || '').slice(0, 5000);
+      const ctxHash = (() => {
+        try {
+          let h = 0;
+          for (let i = 0; i < ctxStr.length; i++) { h = ((h << 5) - h) + ctxStr.charCodeAt(i); h |= 0; }
+          return Math.abs(h);
+        } catch { return 0; }
+      })();
+      const timestamp = isNewsQuery ? Math.floor(Date.now() / (2 * 60 * 1000)) : 0; // 2-minute buckets for news
+      const cacheKey = JSON.stringify({ s: sessionId, q: userInput.trim().slice(0, 512), lang: languageInfo.detected_language, ctxh: ctxHash, terse, maxTokens, loc: locationInfo ? `${locationInfo.city}|${locationInfo.country}` : '', ts: timestamp });
       if (streamingOptions.enableStreaming !== true) {
         const cached = this._getFromCache(cacheKey);
         if (cached) {
@@ -209,7 +220,21 @@ MANDATORY INSTRUCTIONS:
 ## 🔍 GOOGLE SEARCH INSTRUCTION
 If the query requires current information (news, prices, dates, events), please use Google Search to find the most up-to-date information before responding.` : '';
 
-      const combinedPrompt = `# IslamicAI Response System 🤖
+      // NEWS MODE: When search is required, enforce concise, sourced current updates
+      const newsModeSection = includeSearchInstruction ? `
+
+## 📰 NEWS MODE (STRICT)
+- Task: Provide the latest, factual update for the user's specific query only
+- Style: Concise, direct, no generic introductions or long religious prefaces
+- Include: Current date/time (UTC), 3–5 bullet updates, 2–3 credible sources with titles + URLs
+- Avoid: Generic greetings or unrelated background
+- If data is limited: Say so briefly and provide the best-available summary
+` : '';
+
+      // Cap prompt size to avoid overlong requests
+      const cap = (s) => (s && s.length > 12000) ? (s.slice(0, 12000) + '\n\n[Context truncated]') : (s || '');
+
+      const combinedPrompt = cap(`# IslamicAI Response System 🤖
 
 ## 🚨 CRITICAL SECURITY DIRECTIVE
 ${languageInstruction}
@@ -248,10 +273,10 @@ ${languageInstruction}
 - Maintain natural conversation flow and avoid repeating information unnecessarily
 
 ${filteredPrompt ? `## 🧠 CONTEXTUAL PROMPT
-${filteredPrompt}` : ''}${universalQuranInstruction}${googleSearchSection}`;
+${cap(filteredPrompt)}` : ''}${includeSearchInstruction ? '' : universalQuranInstruction}${googleSearchSection}${newsModeSection}`);
 
       // Performance optimized request body with exact configuration from user requirements
-      const requestBody = {
+      const requestBodyBase = {
         contents: [
           {
             role: "user",
@@ -281,16 +306,18 @@ ${filteredPrompt}` : ''}${universalQuranInstruction}${googleSearchSection}`;
             category: "HARM_CATEGORY_DANGEROUS_CONTENT",
             threshold: "BLOCK_LOW_AND_ABOVE"
           }
-        ],
-        // Exact tools configuration - ALWAYS include Google Search when needed
-        tools: includeSearchInstruction ? [
-          { googleSearch: {} }
-        ] : []
+        ]
       };
+      // Include tools only when internet data is needed
+      const requestBody = includeSearchInstruction ? {
+        ...requestBodyBase,
+        tools: [ { googleSearch: {} } ]
+      } : requestBodyBase;
 
       // Use streaming by default unless explicitly disabled
       if (streamingOptions.enableStreaming !== false) {
         console.log('Using streaming response (default mode)');
+        // Count search in streaming path as well
         const response = this.generateStreamingResponse(requestBody, streamingOptions);
         this.performanceMetrics.successfulRequests++;
         this._updatePerformanceMetrics(startTime, includeSearchInstruction);
@@ -305,7 +332,15 @@ ${filteredPrompt}` : ''}${universalQuranInstruction}${googleSearchSection}`;
         const data = response;
         
         if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-          let responseText = data.candidates[0].content.parts[0].text;
+          let responseText = '';
+          try {
+            const parts = data.candidates[0].content.parts;
+            if (Array.isArray(parts) && parts[0] && typeof parts[0].text === 'string') {
+              responseText = parts[0].text;
+            } else if (typeof data.candidates[0].content.text === 'string') {
+              responseText = data.candidates[0].content.text;
+            }
+          } catch {}
           
           // Post-process and compress response
           responseText = this.postProcessResponse(responseText, queryType, languageInfo);
@@ -1046,7 +1081,11 @@ ${languageInstruction}
     if (this.responseCache.has(key)) {
       const cached = this.responseCache.get(key);
       // Check if cache is still valid (LRU with time-based expiration)
-      if (Date.now() - cached.timestamp < 300000) { // 5 minutes
+      // Shorter TTL for news queries
+      const isNewsQuery = key.includes('news') || key.includes('bataa') || key.includes('gaza');
+      const cacheTTL = isNewsQuery ? 120000 : 300000; // 2 minutes for news, 5 minutes for others
+      
+      if (Date.now() - cached.timestamp < cacheTTL) {
         console.log('Cache hit for key:', key);
         return cached.response;
       } else {

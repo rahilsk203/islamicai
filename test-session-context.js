@@ -1,5 +1,5 @@
 // Test script to verify session context handling
-const { AdvancedSessionManager } = require('./src/advanced-session-manager.js');
+import { AdvancedSessionManager } from './src/advanced-session-manager.js';
 
 // Mock KV namespace for testing
 const mockKV = {

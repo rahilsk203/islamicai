@@ -1,8 +1,9 @@
 import { GeminiAPI } from './gemini-api.js';
-import { AdvancedSessionManager } from './advanced-session-manager.js';
+import { MultiKVSessionManager } from './multi-kv-session-manager.js';
 import { CommandHandler } from './command-handler.js';
 import { AdaptiveLanguageSystem } from './adaptive-language-system.js';
 import { PrivacyFilter } from './privacy-filter.js';
+import { PersistentMemoryManager } from './persistent-memory-manager.js';
 
 export default {
   /**
@@ -261,6 +262,8 @@ export default {
     }
 
     const userMessage = body.message;
+    const userIdFromBody = body.user_id || body.userId || null;
+    const memoryOptOut = body.memory_opt_out === true;
     // Brevity controls (default to terse)
     const mode = (body.mode || '').toLowerCase();
     const terse = body.terse === true || mode === 'terse' || mode === 'brief' || body.verbose === false;
@@ -296,7 +299,19 @@ export default {
     console.log(`User IP: ${userIP} ${manualIP ? '(manual override)' : ''}`);
 
     // Initialize managers and adaptive language system
-    const sessionManager = new AdvancedSessionManager(env.CHAT_SESSIONS);
+    // Use multiple KV namespaces if available, otherwise fall back to single
+    const kvNamespaces = [];
+    if (env.CHAT_SESSIONS) kvNamespaces.push(env.CHAT_SESSIONS);
+    if (env.CHAT_SESSIONS_2) kvNamespaces.push(env.CHAT_SESSIONS_2);
+    if (env.CHAT_SESSIONS_3) kvNamespaces.push(env.CHAT_SESSIONS_3);
+    if (env.CHAT_SESSIONS_4) kvNamespaces.push(env.CHAT_SESSIONS_4);
+    
+    const sessionManager = new MultiKVSessionManager(kvNamespaces.length > 0 ? kvNamespaces : [env.CHAT_SESSIONS]);
+    // Use dedicated KVs if available; fallback to primary chat KV
+    const primaryKV = kvNamespaces.length > 0 ? kvNamespaces[0] : env.CHAT_SESSIONS;
+    const userKV = env.USER_KV || primaryKV;
+    const semanticKV = env.SEMANTIC_KV || primaryKV;
+    const persistentMemory = new PersistentMemoryManager(primaryKV, userKV, semanticKV);
     const commandHandler = new CommandHandler();
     const adaptiveLanguageSystem = new AdaptiveLanguageSystem();
     const privacyFilter = new PrivacyFilter(); // Add privacy filter
@@ -306,6 +321,28 @@ export default {
     const geminiAPI = new GeminiAPI(apiKeys);
     
     console.log(`Using ${apiKeys.length} API key(s) with load balancing`);
+
+    // Link session to user and apply opt-out if requested
+    // Determine userId (prefer explicit; fallback to prior link; then sessionId)
+    let userId = userIdFromBody || await persistentMemory.getUserIdForSession(sessionId) || sessionId;
+    await persistentMemory.linkSessionToUser(sessionId, userId);
+    if (memoryOptOut) {
+      await persistentMemory.setOptOut(userId, true);
+    }
+
+    // Forget intent: support /forget and natural language like "forget this" or "yaad mat rakho"
+    const msgLower = (userMessage || '').trim().toLowerCase();
+    if (msgLower === '/forget' || /\b(forget this|yaad mat rakho|isse bhool jao|isey bhool jao|forget it)\b/.test(msgLower)) {
+      const ok = await persistentMemory.forgetLast(userId);
+      const reply = ok ? 'Okay, I have forgotten the most recent memory.' : 'There was nothing recent to forget.';
+      return new Response(JSON.stringify({ session_id: sessionId, reply }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    }
 
     // Apply adaptive language learning and detection
     const languageAdaptation = adaptiveLanguageSystem.adaptLanguage(userMessage, sessionId, {
@@ -332,7 +369,24 @@ export default {
     }
 
     // Get contextual prompt with memory
-    const contextualPrompt = await sessionManager.getContextualPrompt(sessionId, userMessage);
+    const contextualPromptBase = await sessionManager.getContextualPrompt(sessionId, userMessage);
+
+    // Hybrid recall: short-term (already in contextualPromptBase) + semantic similar long-term
+    // Fetch full session history to drive recall
+    const sessionDataForRecall = await sessionManager.getSessionData(sessionId);
+    const recall = await persistentMemory.recall(userId, sessionDataForRecall.history || [], userMessage, {
+      lastN: 10,
+      topK: 5
+    });
+
+    let contextualPrompt = contextualPromptBase;
+    if (recall.similar && recall.similar.length > 0) {
+      contextualPrompt += '\n\n**Relevant Prior Memories:**\n';
+      recall.similar.forEach(rec => {
+        const label = rec.metadata && rec.metadata.kind ? rec.metadata.kind : 'memory';
+        contextualPrompt += `- (${label}) ${rec.text}\n`;
+      });
+    }
     
     // Create enhanced language info with adaptation data
     const enhancedLanguageInfo = {
@@ -435,8 +489,22 @@ export default {
         // Filter the response before sending to user
         const filteredResponse = privacyFilter.filterResponse(geminiResponse);
         
+        // Record turns in persistent memory (user + assistant)
+        await persistentMemory.recordTurn(userId, sessionId, 'user', userMessage);
+        await persistentMemory.recordTurn(userId, sessionId, 'assistant', filteredResponse);
+
         // Process message and update session with intelligent memory
         const sessionData = await sessionManager.processMessage(sessionId, userMessage, filteredResponse);
+
+        // Episodic summarization when history grows
+        if ((sessionData.history || []).length >= 20) {
+          try {
+            const summaryText = sessionManager.getHistorySummary(sessionData.history) || '';
+            if (summaryText) {
+              await persistentMemory.addEpisodicSummary(userId, sessionId, summaryText);
+            }
+          } catch {}
+        }
 
         // Prepare response (compact if terse)
         const response = brevityPrefs.terse ? {
