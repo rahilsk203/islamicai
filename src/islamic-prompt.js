@@ -49,6 +49,196 @@ export class IslamicPrompt {
 
     // Global setting: always include at least one Quranic verse in responses
     this.alwaysIncludeQuran = true;
+    
+    // DSA Optimization: Initialize optimized data structures
+    this._initializeOptimizedDataStructures();
+    
+    // Performance monitoring
+    this.performanceMetrics = {
+      cacheHits: 0,
+      cacheMisses: 0,
+      classificationTime: 0,
+      validationTime: 0,
+      totalRequests: 0
+    };
+  }
+
+  /**
+   * Initialize optimized data structures for O(1) lookups
+   * @private
+   */
+  _initializeOptimizedDataStructures() {
+    // Convert suspicious patterns array to Set for O(1) lookup
+    this.suspiciousPatternsSet = new Set([
+      // Traditional jailbreak attempts
+      'pretend to be', 'ignore rules', 'jailbreak', 'override', 'bypass',
+      'secret mode', 'hack', 'dan mode', 'act as', 'roleplay as',
+      'forget your instructions', 'change your behavior', 'new persona',
+      'different character',
+      
+      // Model information requests
+      'system prompt', 'ignore previous instructions', 'what model',
+      'which model', 'what ai', 'which ai', 'what language model',
+      'which language model', 'internal model', 'model information',
+      'architecture', 'training data', 'how were you trained',
+      'who created you', 'what company', 'which company',
+      'trained by', 'developed by', 'created by', 'made by',
+      'google train', 'google model', 'google ai', 'who train', 'who develop',
+      
+      // Technical implementation queries
+      'backend model', 'internal workings', 'how you work', 'your structure',
+      'code structure', 'implementation', 'framework', 'technology stack',
+      'programming language', 'database', 'api', 'server',
+      
+      // Prompt injection attempts
+      'system:', 'user:', 'assistant:', 'begin dump', 'end dump',
+      'dump memory', 'reveal prompt', 'show instructions',
+      
+      // Additional suspicious patterns
+      'reveal your', 'tell me about your', 'how were you', 'what is your',
+      'which is your', 'can you tell me', 'can you reveal', 'what backend',
+      'what architecture', 'what implementation', 'show me your',
+      'forget your', 'ignore your'
+    ]);
+
+    // Create Trie for efficient query classification
+    this.queryClassificationTrie = this._buildClassificationTrie();
+    
+    // Cache for frequently accessed data
+    this.cache = new Map();
+    this.cacheMaxSize = 1000;
+    this.cacheTTL = 300000; // 5 minutes in milliseconds
+    
+    // Pre-computed keyword sets for O(1) lookups
+    this.islamicGuidanceKeywords = new Set([
+      'halal', 'haram', 'prayer', 'namaz', 'fasting', 'roza', 'zakat', 'sadaqah',
+      'marriage', 'divorce', 'inheritance', 'business', 'trade', 'interest', 'riba',
+      'morality', 'ethics', 'righteousness', 'sin', 'forgiveness', 'repentance'
+    ]);
+    
+    this.spiritualKeywords = new Set([
+      'faith', 'belief', 'iman', 'tawheed', 'monotheism', 'god', 'allah',
+      'spirituality', 'soul', 'heart', 'purification', 'character', 'virtue',
+      'patience', 'gratitude', 'trust', 'hope', 'fear', 'love', 'mercy'
+    ]);
+    
+    this.generalIslamicKeywords = new Set([
+      'islam', 'muslim', 'islamic', 'religion', 'deen', 'shariah',
+      'ummah', 'community', 'brotherhood', 'sisterhood'
+    ]);
+    
+    this.lifeGuidanceKeywords = new Set([
+      'how to', 'what should', 'advice', 'guidance', 'help', 'problem', 'difficulty',
+      'struggle', 'challenge', 'decision', 'choice', 'right path', 'wisdom'
+    ]);
+  }
+
+  /**
+   * Build a Trie data structure for efficient query classification
+   * @private
+   * @returns {Object} Trie structure for classification
+   */
+  _buildClassificationTrie() {
+    const trie = {};
+    
+    // Define classification patterns with their corresponding types
+    const classificationPatterns = {
+      'quran': ['quran', 'qur\'an', 'ayat', 'surah'],
+      'hadith': ['hadith', 'sunnah', 'narrated'],
+      'fiqh': ['fiqh', 'halal', 'haram', 'prayer', 'namaz', 'wudu', 'zakat', 'fasting', 'roza'],
+      'seerah': ['seerah', 'prophet', 'muhammad', 'sahabah', 'companions', 'khilafah'],
+      'debate': ['prove', 'god exists', 'religion', 'atheist', 'debate', 'argument', 'logic', 'rational', 'scientific', 'evidence', 'proof'],
+      'dua': ['dua', 'supplication', 'prayer'],
+      'aqeedah': ['aqeedah', 'belief', 'faith', 'iman', 'tawheed', 'monotheism']
+    };
+    
+    // Build trie structure
+    for (const [type, patterns] of Object.entries(classificationPatterns)) {
+      for (const pattern of patterns) {
+        let current = trie;
+        for (const char of pattern) {
+          if (!current[char]) {
+            current[char] = {};
+          }
+          current = current[char];
+        }
+        current._type = type;
+      }
+    }
+    
+    return trie;
+  }
+
+  /**
+   * Classify query using Trie for O(k) complexity where k is query length
+   * @param {string} userInput - User's input
+   * @returns {string} Query type
+   */
+  _classifyQueryWithTrie(userInput) {
+    const lowerInput = userInput.toLowerCase();
+    const words = lowerInput.split(/\s+/);
+    
+    for (const word of words) {
+      let current = this.queryClassificationTrie;
+      let matchedType = null;
+      
+      for (const char of word) {
+        if (current[char]) {
+          current = current[char];
+          if (current._type) {
+            matchedType = current._type;
+          }
+        } else {
+          break;
+        }
+      }
+      
+      if (matchedType) {
+        return matchedType;
+      }
+    }
+    
+    return 'general';
+  }
+
+  /**
+   * Cache management with LRU eviction
+   * @private
+   * @param {string} key - Cache key
+   * @param {*} value - Value to cache
+   */
+  _setCache(key, value) {
+    if (this.cache.size >= this.cacheMaxSize) {
+      // Remove oldest entry (LRU)
+      const firstKey = this.cache.keys().next().value;
+      this.cache.delete(firstKey);
+    }
+    
+    this.cache.set(key, {
+      value,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Get value from cache with TTL check
+   * @private
+   * @param {string} key - Cache key
+   * @returns {*} Cached value or null
+   */
+  _getCache(key) {
+    const cached = this.cache.get(key);
+    if (cached && (Date.now() - cached.timestamp) < this.cacheTTL) {
+      this.performanceMetrics.cacheHits++;
+      return cached.value;
+    }
+    
+    if (cached) {
+      this.cache.delete(key);
+    }
+    
+    this.performanceMetrics.cacheMisses++;
+    return null;
   }
 
   /**
@@ -227,134 +417,72 @@ When addressing skeptical or challenging questions:
   }
 
   validateInput(userInput) {
-    // Enhanced validation with more sophisticated pattern detection
-    const suspiciousPatterns = [
-      // Traditional jailbreak attempts
-      'pretend to be',
-      'ignore rules',
-      'jailbreak',
-      'override',
-      'bypass',
-      'secret mode',
-      'hack',
-      'dan mode',
-      'act as',
-      'roleplay as',
-      'forget your instructions',
-      'change your behavior',
-      'new persona',
-      'different character',
-      
-      // Model information requests
-      'system prompt',
-      'ignore previous instructions',
-      'what model',
-      'which model',
-      'what ai',
-      'which ai',
-      'what language model',
-      'which language model',
-      'internal model',
-      'model information',
-      'architecture',
-      'training data',
-      'how were you trained',
-      'who created you',
-      'what company',
-      'which company',
-      'trained by',
-      'developed by',
-      'created by',
-      'made by',
-      'google train',
-      'google model',
-      'google ai',
-      'who train',
-      'who develop',
-      
-      // Technical implementation queries
-      'backend model',
-      'internal workings',
-      'how you work',
-      'your structure',
-      'code structure',
-      'implementation',
-      'framework',
-      'technology stack',
-      'programming language',
-      'database',
-      'api',
-      'server',
-      
-      // Prompt injection attempts
-      'system:',
-      'user:',
-      'assistant:',
-      'begin dump',
-      'end dump',
-      'dump memory',
-      'reveal prompt',
-      'show instructions',
-      
-      // Additional suspicious patterns
-      'reveal your',
-      'tell me about your',
-      'how were you',
-      'what is your',
-      'which is your',
-      'can you tell me',
-      'can you reveal',
-      'what backend',
-      'what architecture',
-      'what implementation',
-      'show me your',
-      'forget your',
-      'ignore your'
-    ];
-
-    const lowerInput = userInput.toLowerCase();
-    const isSuspicious = suspiciousPatterns.some(pattern => 
-      lowerInput.includes(pattern)
-    );
-
-    if (isSuspicious) {
-      return {
-        isValid: false,
-        response: "I appreciate the creativity, but I'll stick to authentic Islamic insights as IslamicAI. What's your real question? 🤲"
-      };
+    const startTime = performance.now();
+    
+    // Check cache first
+    const cacheKey = `validation_${userInput.toLowerCase()}`;
+    const cached = this._getCache(cacheKey);
+    if (cached !== null) {
+      this.performanceMetrics.validationTime += performance.now() - startTime;
+      return cached;
     }
 
-    return { isValid: true };
+    const lowerInput = userInput.toLowerCase();
+    
+    // Optimized validation using Set for O(1) lookup instead of O(n) array.some()
+    // Split input into words and check each against suspicious patterns
+    const words = lowerInput.split(/\s+/);
+    let isSuspicious = false;
+    
+    // Check for exact matches first (fastest)
+    for (const word of words) {
+      if (this.suspiciousPatternsSet.has(word)) {
+        isSuspicious = true;
+        break;
+      }
+    }
+    
+    // If no exact word match, check for substring patterns
+    if (!isSuspicious) {
+      for (const pattern of this.suspiciousPatternsSet) {
+        if (lowerInput.includes(pattern)) {
+          isSuspicious = true;
+          break;
+        }
+      }
+    }
+
+    const result = isSuspicious ? {
+      isValid: false,
+      response: "I appreciate the creativity, but I'll stick to authentic Islamic insights as IslamicAI. What's your real question? 🤲"
+    } : { isValid: true };
+
+    // Cache the result
+    this._setCache(cacheKey, result);
+    
+    this.performanceMetrics.validationTime += performance.now() - startTime;
+    return result;
   }
 
   classifyQuery(userInput) {
-    const lowerInput = userInput.toLowerCase();
+    const startTime = performance.now();
     
-    // Enhanced classification with priority order and Quranic verse inclusion indicators
-    if (lowerInput.includes('quran') || lowerInput.includes('qur\'an') || lowerInput.includes('ayat') || lowerInput.includes('surah')) {
-      return 'quran';
-    } else if (lowerInput.includes('hadith') || lowerInput.includes('sunnah') || lowerInput.includes('narrated')) {
-      return 'hadith';
-    } else if (lowerInput.includes('fiqh') || lowerInput.includes('halal') || lowerInput.includes('haram') || 
-               lowerInput.includes('prayer') || lowerInput.includes('namaz') || lowerInput.includes('wudu') || 
-               lowerInput.includes('zakat') || lowerInput.includes('fasting') || lowerInput.includes('roza')) {
-      return 'fiqh';
-    } else if (lowerInput.includes('seerah') || lowerInput.includes('prophet') || lowerInput.includes('muhammad') || 
-               lowerInput.includes('sahabah') || lowerInput.includes('companions') || lowerInput.includes('khilafah')) {
-      return 'seerah';
-    } else if (lowerInput.includes('prove') || lowerInput.includes('god exists') || lowerInput.includes('religion') || 
-               lowerInput.includes('atheist') || lowerInput.includes('debate') || lowerInput.includes('argument') || 
-               lowerInput.includes('logic') || lowerInput.includes('rational') || lowerInput.includes('scientific') ||
-               lowerInput.includes('evidence') || lowerInput.includes('proof')) {
-      return 'debate';
-    } else if (lowerInput.includes('dua') || lowerInput.includes('supplication') || lowerInput.includes('prayer')) {
-      return 'dua';
-    } else if (lowerInput.includes('aqeedah') || lowerInput.includes('belief') || lowerInput.includes('faith') || 
-               lowerInput.includes('iman') || lowerInput.includes('tawheed') || lowerInput.includes('monotheism')) {
-      return 'aqeedah';
-    } else {
-      return 'general';
+    // Check cache first
+    const cacheKey = `classification_${userInput.toLowerCase()}`;
+    const cached = this._getCache(cacheKey);
+    if (cached !== null) {
+      this.performanceMetrics.classificationTime += performance.now() - startTime;
+      return cached;
     }
+
+    // Use Trie-based classification for O(k) complexity where k is query length
+    const result = this._classifyQueryWithTrie(userInput);
+    
+    // Cache the result
+    this._setCache(cacheKey, result);
+    
+    this.performanceMetrics.classificationTime += performance.now() - startTime;
+    return result;
   }
 
   /**
@@ -364,129 +492,164 @@ When addressing skeptical or challenging questions:
    * @returns {Object} Decision and reasoning for Quranic verse inclusion
    */
   shouldIncludeQuranicVerses(userInput, queryType) {
+    const startTime = performance.now();
+    
+    // Check cache first
+    const cacheKey = `quran_${userInput.toLowerCase()}_${queryType}`;
+    const cached = this._getCache(cacheKey);
+    if (cached !== null) {
+      return cached;
+    }
+
     const lowerInput = userInput.toLowerCase();
     
     // Always include for direct Quran queries
     if (queryType === 'quran') {
-      return {
+      const result = {
         shouldInclude: true,
         priority: 'high',
         reason: 'direct_quran_query',
         verseTypes: ['relevant_verses', 'context_verses', 'supporting_verses']
       };
+      this._setCache(cacheKey, result);
+      return result;
     }
     
-    // High priority for Islamic guidance queries
-    const islamicGuidanceKeywords = [
-      'halal', 'haram', 'prayer', 'namaz', 'fasting', 'roza', 'zakat', 'sadaqah',
-      'marriage', 'divorce', 'inheritance', 'business', 'trade', 'interest', 'riba',
-      'morality', 'ethics', 'righteousness', 'sin', 'forgiveness', 'repentance'
-    ];
+    // High priority for Islamic guidance queries - O(1) lookup using Set
+    const words = lowerInput.split(/\s+/);
+    let hasIslamicGuidance = false;
     
-    const hasIslamicGuidance = islamicGuidanceKeywords.some(keyword => lowerInput.includes(keyword));
+    for (const word of words) {
+      if (this.islamicGuidanceKeywords.has(word)) {
+        hasIslamicGuidance = true;
+        break;
+      }
+    }
     
     if (hasIslamicGuidance || queryType === 'fiqh') {
-      return {
+      const result = {
         shouldInclude: true,
         priority: 'high',
         reason: 'islamic_guidance_query',
         verseTypes: ['command_verses', 'guidance_verses', 'prohibition_verses']
       };
+      this._setCache(cacheKey, result);
+      return result;
     }
     
-    // Medium priority for spiritual and moral topics
-    const spiritualKeywords = [
-      'faith', 'belief', 'iman', 'tawheed', 'monotheism', 'god', 'allah',
-      'spirituality', 'soul', 'heart', 'purification', 'character', 'virtue',
-      'patience', 'gratitude', 'trust', 'hope', 'fear', 'love', 'mercy'
-    ];
-    
-    const hasSpiritualContent = spiritualKeywords.some(keyword => lowerInput.includes(keyword));
+    // Medium priority for spiritual and moral topics - O(1) lookup using Set
+    let hasSpiritualContent = false;
+    for (const word of words) {
+      if (this.spiritualKeywords.has(word)) {
+        hasSpiritualContent = true;
+        break;
+      }
+    }
     
     if (hasSpiritualContent || queryType === 'aqeedah') {
-      return {
+      const result = {
         shouldInclude: true,
         priority: 'medium',
         reason: 'spiritual_moral_query',
         verseTypes: ['inspirational_verses', 'wisdom_verses', 'comfort_verses']
       };
+      this._setCache(cacheKey, result);
+      return result;
     }
     
     // Medium priority for debate and discussion
     if (queryType === 'debate') {
-      return {
+      const result = {
         shouldInclude: true,
         priority: 'medium',
         reason: 'debate_discussion_query',
         verseTypes: ['evidence_verses', 'proof_verses', 'rational_verses']
       };
+      this._setCache(cacheKey, result);
+      return result;
     }
     
-    // Low priority for general Islamic topics
-    const generalIslamicKeywords = [
-      'islam', 'muslim', 'islamic', 'religion', 'deen', 'shariah',
-      'ummah', 'community', 'brotherhood', 'sisterhood'
-    ];
-    
-    const hasGeneralIslamic = generalIslamicKeywords.some(keyword => lowerInput.includes(keyword));
+    // Low priority for general Islamic topics - O(1) lookup using Set
+    let hasGeneralIslamic = false;
+    for (const word of words) {
+      if (this.generalIslamicKeywords.has(word)) {
+        hasGeneralIslamic = true;
+        break;
+      }
+    }
     
     if (hasGeneralIslamic) {
-      return {
+      const result = {
         shouldInclude: true,
         priority: 'low',
         reason: 'general_islamic_query',
         verseTypes: ['foundational_verses', 'context_verses']
       };
+      this._setCache(cacheKey, result);
+      return result;
     }
     
-    // Check for life guidance queries
-    const lifeGuidanceKeywords = [
-      'how to', 'what should', 'advice', 'guidance', 'help', 'problem', 'difficulty',
-      'struggle', 'challenge', 'decision', 'choice', 'right path', 'wisdom'
-    ];
-    
-    const hasLifeGuidance = lifeGuidanceKeywords.some(keyword => lowerInput.includes(keyword));
+    // Check for life guidance queries - O(1) lookup using Set
+    let hasLifeGuidance = false;
+    for (const word of words) {
+      if (this.lifeGuidanceKeywords.has(word)) {
+        hasLifeGuidance = true;
+        break;
+      }
+    }
     
     if (hasLifeGuidance) {
-      return {
+      const result = {
         shouldInclude: true,
         priority: 'medium',
         reason: 'life_guidance_query',
         verseTypes: ['guidance_verses', 'wisdom_verses', 'comfort_verses']
       };
+      this._setCache(cacheKey, result);
+      return result;
     }
     
     // Default: no Quranic verses needed
-    return {
+    const result = {
       shouldInclude: false,
       priority: 'none',
       reason: 'non_islamic_query',
       verseTypes: []
     };
+    this._setCache(cacheKey, result);
+    return result;
   }
 
   getQuerySpecificPrompt(queryType) {
-    const prompts = {
-      quran: `Focus on Qur'anic text, context, meaning, and application. 
+    // Check cache first
+    const cacheKey = `prompt_${queryType}`;
+    const cached = this._getCache(cacheKey);
+    if (cached !== null) {
+      return cached;
+    }
+
+    // Pre-computed prompts map for O(1) lookup
+    const prompts = new Map([
+      ['quran', `Focus on Qur'anic text, context, meaning, and application. 
 MANDATORY: Always include relevant Quranic verses with proper Surah and Ayah citations.
 Structure: Provide the Arabic text, transliteration, translation, and context.
-Include multiple relevant verses when applicable to give comprehensive understanding.`,
+Include multiple relevant verses when applicable to give comprehensive understanding.`],
       
-      hadith: `Reference authentic Hadith collections (Sahih Bukhari, Muslim, etc.). Include grade of authenticity when known.
+      ['hadith', `Reference authentic Hadith collections (Sahih Bukhari, Muslim, etc.). Include grade of authenticity when known.
 ALWAYS include relevant Quranic verses that support or relate to the Hadith being discussed.
-Show the connection between Quranic guidance and Prophetic practice.`,
+Show the connection between Quranic guidance and Prophetic practice.`],
       
-      fiqh: `Apply principles from all four schools of jurisprudence. Mention differences respectfully when relevant.
+      ['fiqh', `Apply principles from all four schools of jurisprudence. Mention differences respectfully when relevant.
 MANDATORY: Include Quranic verses that establish the legal basis for rulings.
 Structure: Quranic foundation → Hadith evidence → Scholarly consensus → Practical application.
-Always cite the specific verses that form the basis of Islamic law on the topic.`,
+Always cite the specific verses that form the basis of Islamic law on the topic.`],
       
-      seerah: `Draw from authentic historical sources. Connect events to lessons and wisdom.
+      ['seerah', `Draw from authentic historical sources. Connect events to lessons and wisdom.
 INCLUDE relevant Quranic verses that were revealed in context of historical events.
 Show how Quranic guidance was applied in the Prophet's life and the lives of companions.
-Connect historical events to current applications of Islamic principles.`,
+Connect historical events to current applications of Islamic principles.`],
       
-      debate: `Respond with scholarly arguments, evidence, and rational explanations. Address counterpoints respectfully.
+      ['debate', `Respond with scholarly arguments, evidence, and rational explanations. Address counterpoints respectfully.
 MANDATORY: Use Quranic verses as primary evidence for Islamic positions.
 Use the Debate-Proof Response Framework:
 1. Respectful Acknowledgment
@@ -494,25 +657,77 @@ Use the Debate-Proof Response Framework:
 3. Rational Argumentation (supported by verses)
 4. Balanced Approach
 5. Constructive Conclusion
-Always back arguments with specific Quranic citations.`,
+Always back arguments with specific Quranic citations.`],
       
-      dua: `Provide authentic supplications with references. Include transliteration and meaning when appropriate.
+      ['dua', `Provide authentic supplications with references. Include transliteration and meaning when appropriate.
 INCLUDE Quranic verses that relate to the topic of supplication.
 Show how Quranic guidance supports the practice of making dua.
-Connect the dua to relevant Quranic teachings about prayer and supplication.`,
+Connect the dua to relevant Quranic teachings about prayer and supplication.`],
       
-      aqeedah: `Focus on core Islamic beliefs. Use clear, precise language avoiding speculative theology.
+      ['aqeedah', `Focus on core Islamic beliefs. Use clear, precise language avoiding speculative theology.
 MANDATORY: Include Quranic verses that establish core beliefs.
 Structure: Belief statement → Quranic evidence → Explanation → Practical implications.
-Always cite the specific verses that form the foundation of Islamic creed.`,
+Always cite the specific verses that form the foundation of Islamic creed.`],
       
-      general: `Provide balanced, authentic Islamic guidance. Connect to relevant sources when beneficial.
+      ['general', `Provide balanced, authentic Islamic guidance. Connect to relevant sources when beneficial.
 When the topic relates to Islamic principles, include relevant Quranic verses.
 Use verses to support guidance and provide spiritual context.
-Structure responses with Quranic foundation when applicable.`
-    };
+Structure responses with Quranic foundation when applicable.`]
+    ]);
     
-    return prompts[queryType] || prompts.general;
+    const result = prompts.get(queryType) || prompts.get('general');
+    this._setCache(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * Get performance metrics
+   * @returns {Object} Performance metrics
+   */
+  getPerformanceMetrics() {
+    return {
+      ...this.performanceMetrics,
+      cacheHitRate: this.performanceMetrics.cacheHits / 
+        (this.performanceMetrics.cacheHits + this.performanceMetrics.cacheMisses) * 100,
+      averageClassificationTime: this.performanceMetrics.classificationTime / 
+        Math.max(this.performanceMetrics.totalRequests, 1),
+      averageValidationTime: this.performanceMetrics.validationTime / 
+        Math.max(this.performanceMetrics.totalRequests, 1)
+    };
+  }
+
+  /**
+   * Reset performance metrics
+   */
+  resetPerformanceMetrics() {
+    this.performanceMetrics = {
+      cacheHits: 0,
+      cacheMisses: 0,
+      classificationTime: 0,
+      validationTime: 0,
+      totalRequests: 0
+    };
+  }
+
+  /**
+   * Clear cache
+   */
+  clearCache() {
+    this.cache.clear();
+  }
+
+  /**
+   * Get cache statistics
+   * @returns {Object} Cache statistics
+   */
+  getCacheStats() {
+    return {
+      size: this.cache.size,
+      maxSize: this.cacheMaxSize,
+      ttl: this.cacheTTL,
+      hitRate: this.performanceMetrics.cacheHits / 
+        (this.performanceMetrics.cacheHits + this.performanceMetrics.cacheMisses) * 100
+    };
   }
 
   // Enhanced security protocols
@@ -622,5 +837,92 @@ Remember: Your primary function is to provide authentic, detailed, and comprehen
 - Format: Arabic → Transliteration → Translation (in the user's detected language) → Brief Context/Application
 - Always cite Surah name and verse number (e.g., "Surah Al-Baqarah 2:255")
 - If topic is non-religious, include a generally relevant wisdom verse (e.g., patience, justice, truth) that uplifts without forcing relevance`;
+  }
+
+  /**
+   * Main processing method that orchestrates all optimizations
+   * @param {string} userInput - User's input
+   * @returns {Object} Complete processing result with performance data
+   */
+  processUserInput(userInput) {
+    const startTime = performance.now();
+    this.performanceMetrics.totalRequests++;
+
+    try {
+      // Step 1: Validate input (O(1) with caching)
+      const validation = this.validateInput(userInput);
+      if (!validation.isValid) {
+        return {
+          success: false,
+          response: validation.response,
+          processingTime: performance.now() - startTime,
+          performance: this.getPerformanceMetrics()
+        };
+      }
+
+      // Step 2: Classify query (O(k) with Trie, cached)
+      const queryType = this.classifyQuery(userInput);
+
+      // Step 3: Determine Quranic verse inclusion (O(1) with Sets, cached)
+      const quranDecision = this.shouldIncludeQuranicVerses(userInput, queryType);
+
+      // Step 4: Get query-specific prompt (O(1) with Map, cached)
+      const specificPrompt = this.getQuerySpecificPrompt(queryType);
+
+      // Step 5: Get system prompt (cached)
+      const systemPrompt = this.getSystemPrompt();
+
+      // Step 6: Get additional prompts based on query type
+      let additionalPrompts = '';
+      if (queryType === 'debate') {
+        additionalPrompts += this.getDebateProofPrompt() + '\n\n';
+        additionalPrompts += this.getDebateResponseFramework() + '\n\n';
+      }
+      
+      if (quranDecision.shouldInclude) {
+        additionalPrompts += this.getUniversalQuranInclusionInstruction() + '\n\n';
+      }
+
+      return {
+        success: true,
+        queryType,
+        quranDecision,
+        systemPrompt,
+        specificPrompt,
+        additionalPrompts,
+        processingTime: performance.now() - startTime,
+        performance: this.getPerformanceMetrics()
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        processingTime: performance.now() - startTime,
+        performance: this.getPerformanceMetrics()
+      };
+    }
+  }
+
+  /**
+   * Optimized batch processing for multiple inputs
+   * @param {string[]} inputs - Array of user inputs
+   * @returns {Object[]} Array of processing results
+   */
+  processBatchInputs(inputs) {
+    const results = [];
+    const batchStartTime = performance.now();
+
+    for (const input of inputs) {
+      results.push(this.processUserInput(input));
+    }
+
+    return {
+      results,
+      batchProcessingTime: performance.now() - batchStartTime,
+      totalInputs: inputs.length,
+      averageProcessingTime: (performance.now() - batchStartTime) / inputs.length,
+      performance: this.getPerformanceMetrics()
+    };
   }
 }
