@@ -21,6 +21,17 @@ export class PersistentMemoryManager {
     // Tunables
     this.defaultLastNTurns = 10;
     this.topKSimilar = 5;
+
+    // DSA: In-memory LRU caches to reduce KV roundtrips
+    this.userProfileCache = new Map(); // userId -> { profile, ts }
+    this.semanticIndexCache = new Map(); // userId -> { ids, ts }
+    this.recentRecordSet = new Map(); // userId -> { set: Set<string>, queue: string[] }
+    this.recallCache = new Map(); // key -> { result, ts }
+    this.cacheTTLms = 5 * 60 * 1000; // 5 minutes
+    this.userProfileCacheCap = 2000;
+    this.semanticIndexCacheCap = 2000;
+    this.recentRecordCap = 128;
+    this.recallCacheCap = 1000;
   }
 
   // ---- Key helpers ----
@@ -47,8 +58,20 @@ export class PersistentMemoryManager {
   // ---- User profile / facts ----
   async getUserProfile(userId) {
     try {
+      // DSA: LRU cache first
+      const now = Date.now();
+      if (this.userProfileCache.has(userId)) {
+        const entry = this.userProfileCache.get(userId);
+        if (now - entry.ts < this.cacheTTLms) {
+          return entry.profile;
+        } else {
+          this.userProfileCache.delete(userId);
+        }
+      }
       const data = await this.userKV.get(this._userKey(userId));
-      return data ? JSON.parse(data) : { keyFacts: {}, preferences: {}, optOutMemory: false };
+      const profile = data ? JSON.parse(data) : { keyFacts: {}, preferences: {}, optOutMemory: false };
+      this._putUserProfileCache(userId, profile);
+      return profile;
     } catch {
       return { keyFacts: {}, preferences: {}, optOutMemory: false };
     }
@@ -57,6 +80,7 @@ export class PersistentMemoryManager {
   async saveUserProfile(userId, profile) {
     try {
       await this.userKV.put(this._userKey(userId), JSON.stringify(profile), { expirationTtl: 60 * 60 * 24 * 30 });
+      this._putUserProfileCache(userId, profile);
     } catch {}
   }
 
@@ -98,18 +122,29 @@ export class PersistentMemoryManager {
 
   async _getUserSemanticIndex(userId) {
     try {
+      const now = Date.now();
+      if (this.semanticIndexCache.has(userId)) {
+        const entry = this.semanticIndexCache.get(userId);
+        if (now - entry.ts < this.cacheTTLms) return entry.ids;
+        this.semanticIndexCache.delete(userId);
+      }
       const raw = await this.semanticKV.get(this._semanticUserIndexKey(userId));
-      return raw ? JSON.parse(raw) : [];
+      const ids = raw ? JSON.parse(raw) : [];
+      this._putSemanticIndexCache(userId, ids);
+      return ids;
     } catch { return []; }
   }
 
   async _setUserSemanticIndex(userId, ids) {
     try {
       await this.semanticKV.put(this._semanticUserIndexKey(userId), JSON.stringify(ids.slice(-5000)), { expirationTtl: 60 * 60 * 24 * 30 });
+      this._putSemanticIndexCache(userId, ids.slice(-5000));
     } catch {}
   }
 
   async _saveSemanticRecord(userId, msgId, text, metadata) {
+    // DSA: Skip duplicate recent texts per user (normalized hash)
+    if (this._isRecentDuplicate(userId, text)) return;
     const embedding = this._computeEmbedding(text);
     const record = { id: msgId, userId, embedding, text, metadata, createdAt: Date.now() };
     await this.semanticKV.put(this._semanticMsgKey(msgId), JSON.stringify(record), { expirationTtl: 60 * 60 * 24 * 30 });
@@ -157,6 +192,15 @@ export class PersistentMemoryManager {
     const lastN = options.lastN || this.defaultLastNTurns;
     const topK = options.topK || this.topKSimilar;
 
+    // DSA: Short-window recall cache to avoid recomputing for identical query
+    const cacheKey = this._recallKey(userId, query);
+    const now = Date.now();
+    if (this.recallCache.has(cacheKey)) {
+      const entry = this.recallCache.get(cacheKey);
+      if (now - entry.ts < 5000) return entry.result; // 5s debounce
+      this.recallCache.delete(cacheKey);
+    }
+
     // Short-term: last N turns
     const shortTerm = sessionHistory.slice(-lastN);
 
@@ -176,8 +220,71 @@ export class PersistentMemoryManager {
     scored.sort((a, b) => b.score - a.score);
     const similar = scored.slice(0, topK).map(s => s.rec);
 
-    return { shortTerm, similar };
+    const result = { shortTerm, similar };
+    this._putRecallCache(cacheKey, result);
+    return result;
   }
 }
+
+// ---- DSA helpers (private) ----
+PersistentMemoryManager.prototype._putUserProfileCache = function(userId, profile) {
+  this.userProfileCache.set(userId, { profile, ts: Date.now() });
+  if (this.userProfileCache.size > this.userProfileCacheCap) {
+    const oldest = this.userProfileCache.keys().next().value;
+    if (oldest) this.userProfileCache.delete(oldest);
+  }
+};
+
+PersistentMemoryManager.prototype._putSemanticIndexCache = function(userId, ids) {
+  this.semanticIndexCache.set(userId, { ids, ts: Date.now() });
+  if (this.semanticIndexCache.size > this.semanticIndexCacheCap) {
+    const oldest = this.semanticIndexCache.keys().next().value;
+    if (oldest) this.semanticIndexCache.delete(oldest);
+  }
+};
+
+PersistentMemoryManager.prototype._normalizeText = function(text) {
+  return (text || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 512);
+};
+
+PersistentMemoryManager.prototype._hash32 = function(text) {
+  // FNV-1a 32-bit
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = (hash >>> 0) * 0x01000193;
+  }
+  return (hash >>> 0).toString(16);
+};
+
+PersistentMemoryManager.prototype._isRecentDuplicate = function(userId, text) {
+  const normalized = this._normalizeText(text);
+  const sig = this._hash32(normalized);
+  if (!this.recentRecordSet.has(userId)) {
+    this.recentRecordSet.set(userId, { set: new Set(), queue: [] });
+  }
+  const bucket = this.recentRecordSet.get(userId);
+  if (bucket.set.has(sig)) return true;
+  bucket.set.add(sig);
+  bucket.queue.push(sig);
+  if (bucket.queue.length > this.recentRecordCap) {
+    const old = bucket.queue.shift();
+    if (old) bucket.set.delete(old);
+  }
+  return false;
+};
+
+PersistentMemoryManager.prototype._recallKey = function(userId, query) {
+  const norm = this._normalizeText(query || '');
+  return `${userId}:${this._hash32(norm)}`;
+};
+
+PersistentMemoryManager.prototype._putRecallCache = function(key, result) {
+  this.recallCache.set(key, { result, ts: Date.now() });
+  if (this.recallCache.size > this.recallCacheCap) {
+    const oldest = this.recallCache.keys().next().value;
+    if (oldest) this.recallCache.delete(oldest);
+  }
+};
 
 

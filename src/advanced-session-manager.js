@@ -25,6 +25,22 @@ export class AdvancedSessionManager {
     // LRU cache for contextual prompts (session-aware)
     this.promptCache = new Map();
     this.promptCacheCapacity = 200;
+
+    // DSA: Per-session recent message dedupe (fast similarity short-circuit)
+    this.sessionRecentMsg = new Map(); // sessionId -> { set: Set<string>, queue: string[] }
+    this.recentMsgCapacity = 64;
+
+    // DSA: Precompiled regexes for hot paths
+    this._regex = {
+      time: /\b(time|samay|waqt|abhi|now|current)\b/i,
+      weather: /\b(weather|mausam|hawa|temperature|barish|rain|sunny|garam|thand|weater)\b/i,
+      news: /\b(news|khabar|update|latest|aj|today|gaza|israel|palestine)\b/i,
+      greeting: /\b(hello|hi|salam|assalam|kasa|kaise|how are you)\b/i,
+      islamic: /\b(quran|hadith|islam|allah|prayer|namaz|dua|islamic)\b/i,
+      personalInfo: /(hello|hi|assalamu alaikum|kasa hai|kaise ho|how are you)/i,
+      family: /(maa|papa|bhai|sister|family|ghar|home)/i,
+      health: /(thik|fine|well|sick|ill|bimar)/i
+    };
   }
 
   // Simplified cache management
@@ -176,13 +192,14 @@ export class AdvancedSessionManager {
 
   // ---- LRU cache helpers for contextual prompts ----
   _buildPromptCacheKey(sessionId, userMessage = '') {
-    // Rolling hash for speed and stability
-    let hash = 0;
-    const text = (userMessage || '').slice(-256); // last 256 chars are usually most relevant
+    // DSA: FNV-1a 32-bit hash over the last 256 chars for speed and distribution
+    const text = (userMessage || '').slice(-256);
+    let hash = 0x811c9dc5;
     for (let i = 0; i < text.length; i++) {
-      hash = (hash * 131 + text.charCodeAt(i)) >>> 0;
+      hash ^= text.charCodeAt(i);
+      hash = (hash >>> 0) * 0x01000193;
     }
-    return `${sessionId}:${hash}`;
+    return `${sessionId}:${(hash >>> 0).toString(16)}`;
   }
 
   _getFromPromptCache(key) {
@@ -208,30 +225,30 @@ export class AdvancedSessionManager {
 
   // Detect query type for better context focus
   _detectQueryType(userMessage) {
-    const message = userMessage.toLowerCase();
+    const message = userMessage || '';
     
     // Time-related queries
-    if (/\b(time|time|samay|waqt|abhi|now|current)\b/.test(message)) {
+    if (this._regex.time.test(message)) {
       return 'TIME';
     }
     
     // Weather-related queries
-    if (/\b(weather|mausam|hawa|temperature|barish|rain|sunny|garam|thand|weater)\b/.test(message)) {
+    if (this._regex.weather.test(message)) {
       return 'WEATHER';
     }
     
     // News-related queries
-    if (/\b(news|khabar|update|latest|aj|today|gaza|israel|palestine)\b/.test(message)) {
+    if (this._regex.news.test(message)) {
       return 'NEWS';
     }
     
     // Greeting queries
-    if (/\b(hello|hi|salam|assalam|kasa|kaise|how are you)\b/.test(message)) {
+    if (this._regex.greeting.test(message)) {
       return 'GREETING';
     }
     
     // Islamic queries
-    if (/\b(quran|hadith|islam|allah|prayer|namaz|dua|islamic)\b/.test(message)) {
+    if (this._regex.islamic.test(message)) {
       return 'ISLAMIC_GUIDANCE';
     }
     
@@ -739,11 +756,25 @@ export class AdvancedSessionManager {
     
     sessionData.history.push(userMessageObj, aiMessageObj);
     
-    // DSA: Use binary search to check if similar messages exist
-    const hasSimilarMessage = this._binarySearchForSimilarMessage(
-      sessionData.history, 
-      userMessage
-    );
+    // DSA: Fast per-session dedupe short-circuit before any heavier checks
+    const normalized = this._normalizeMessage(userMessage);
+    const sig = this._hash32(normalized);
+    const dedupe = this._getSessionDedupe(sessionId);
+    let hasSimilarMessage = false;
+    if (dedupe.set.has(sig)) {
+      hasSimilarMessage = true;
+      this.performanceStats.bloomFilterHits++;
+    } else {
+      this.performanceStats.bloomFilterMisses++;
+      dedupe.set.add(sig);
+      dedupe.queue.push(sig);
+      if (dedupe.queue.length > this.recentMsgCapacity) {
+        const old = dedupe.queue.shift();
+        if (old) dedupe.set.delete(old);
+      }
+      // Optional: fall back to binary search only if needed elsewhere
+      // hasSimilarMessage = this._binarySearchForSimilarMessage(sessionData.history, userMessage);
+    }
     
     // Extract and store important information
     const importantInfo = this.memory.extractImportantInfo(userMessage, sessionData.history);
@@ -816,6 +847,32 @@ export class AdvancedSessionManager {
     }
     
     return false;
+  }
+
+  // DSA: Per-session dedupe helpers
+  _getSessionDedupe(sessionId) {
+    if (!this.sessionRecentMsg.has(sessionId)) {
+      this.sessionRecentMsg.set(sessionId, { set: new Set(), queue: [] });
+    }
+    return this.sessionRecentMsg.get(sessionId);
+  }
+
+  _normalizeMessage(message) {
+    return (message || '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 256);
+  }
+
+  _hash32(text) {
+    // FNV-1a 32-bit
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = (hash >>> 0) * 0x01000193;
+    }
+    return (hash >>> 0).toString(16);
   }
 
   updateUserProfile(userProfile, importantInfo) {
@@ -968,8 +1025,7 @@ export class AdvancedSessionManager {
     const keyPoints = [];
     
     // Check for personal information in user message
-    const personalInfoRegex = /(hello|hi|assalamu alaikum|kasa hai|kaise ho|how are you)/i;
-    if (personalInfoRegex.test(userMessage)) {
+    if (this._regex.personalInfo.test(userMessage)) {
       keyPoints.push({
         type: 'greeting',
         content: userMessage,
@@ -978,8 +1034,7 @@ export class AdvancedSessionManager {
     }
     
     // Check for family mentions
-    const familyRegex = /(maa|papa|bhai|sister|family|ghar|home)/i;
-    if (familyRegex.test(userMessage)) {
+    if (this._regex.family.test(userMessage)) {
       keyPoints.push({
         type: 'family',
         content: userMessage,
@@ -988,8 +1043,7 @@ export class AdvancedSessionManager {
     }
     
     // Check for health/well-being mentions
-    const healthRegex = /(thik|fine|well|sick|ill|bimar)/i;
-    if (healthRegex.test(userMessage)) {
+    if (this._regex.health.test(userMessage)) {
       keyPoints.push({
         type: 'health',
         content: userMessage,

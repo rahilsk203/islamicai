@@ -418,9 +418,9 @@ class MemoryPool {
 class GeminiAPI {
   constructor(apiKeys) {
     this.apiKeyManager = new APIKeyManager(apiKeys);
-    this.modelId = 'gemini-2.5-flash-lite';
-    this.nonStreamingUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelId}:generateContent`;
-    this.streamingUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelId}:streamGenerateContent`;
+    // Mixed-model support (round-robin): use both 2.5 and latest flash-lite variants
+    this.models = ['gemini-2.5-flash-lite', 'gemini-flash-lite-latest'];
+    this.modelIndex = 0;
     this.islamicPrompt = new IslamicPrompt();
     this.internetProcessor = new InternetDataProcessor();
     this.privacyFilter = new PrivacyFilter();
@@ -448,6 +448,19 @@ class GeminiAPI {
       cacheMisses: 0,
       bloomFilterHits: 0,
       memoryPoolHits: 0
+    };
+  }
+
+  _pickNextModelId() {
+    const id = this.models[this.modelIndex % this.models.length];
+    this.modelIndex = (this.modelIndex + 1) % this.models.length;
+    return id;
+  }
+
+  _buildUrlsForModel(modelId) {
+    return {
+      nonStreaming: `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`,
+      streaming: `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent`
     };
   }
   
@@ -871,13 +884,16 @@ class GeminiAPI {
         tools: [ { googleSearch: {} } ]
       } : requestBodyBase;
 
+        const modelId = this._pickNextModelId();
+        const urls = this._buildUrlsForModel(modelId);
+
         if (streamingOptions.enableStreaming !== false) {
-          const response = this.generateStreamingResponse(requestBody, streamingOptions);
+          const response = this.generateStreamingResponse(requestBody, streamingOptions, modelId);
           this.performanceMetrics.successfulRequests++;
           this._updatePerformanceMetrics(startTime, includeSearchInstruction);
           return response;
         } else {
-          const response = await this.makeAPIRequestWithRetry(requestBody, this.nonStreamingUrl);
+          const response = await this._makeAPIRequestWithRetryToUrl(requestBody, urls.nonStreaming);
           const data = response;
           
           if (data.candidates && data.candidates[0] && data.candidates[0].content) {
@@ -1095,7 +1111,9 @@ ${languageInstruction}
   }
 
   async makeAPIRequestWithRetry(requestBody) {
-    return await this._makeAPIRequestWithRetryToUrl(requestBody, this.nonStreamingUrl);
+    const modelId = this._pickNextModelId();
+    const urls = this._buildUrlsForModel(modelId);
+    return await this._makeAPIRequestWithRetryToUrl(requestBody, urls.nonStreaming);
   }
 
   async _makeAPIRequestWithRetryToUrl(requestBody, targetUrl) {
@@ -1169,7 +1187,7 @@ ${languageInstruction}
     this.apiKeyManager.resetFailedKeys();
   }
 
-  async generateStreamingResponse(requestBody, streamingOptions = {}) {
+  async generateStreamingResponse(requestBody, streamingOptions = {}, modelId = null) {
     const {
       chunkSize = 50,
       delay = 50,
@@ -1185,7 +1203,9 @@ ${languageInstruction}
             throw new Error('No available API keys');
           }
           
-          const response = await fetch(this.streamingUrl, {
+          const useModelId = modelId || (this.models && this.models[0]) || 'gemini-2.5-flash-lite';
+          const urls = this._buildUrlsForModel(useModelId);
+          const response = await fetch(urls.streaming, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

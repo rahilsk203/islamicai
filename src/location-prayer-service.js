@@ -12,6 +12,14 @@ export class LocationPrayerService {
     this.locationCache = new Map();
     this.cacheTimeout = 30 * 60 * 1000; // 30 minutes
     
+    // DSA: Cap caches and precompiled patterns
+    this.locationCacheCapacity = 1000;
+    this.prayerCacheCapacity = 2000;
+    this._privateIpRegex = /^(?:192\.168\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.)/;
+    
+    // DSA: Geohash precision (approx ~4.9km @ precision 5)
+    this._geohashPrecision = 5;
+    
     // Initialize Times Prayer scraper
     this.timesPrayerScraper = new TimesPrayerScraper();
     
@@ -55,10 +63,11 @@ export class LocationPrayerService {
    */
   async getUserLocation(ip) {
     try {
+      const now = Date.now();
       // Check cache first
       if (this.locationCache.has(ip)) {
         const cached = this.locationCache.get(ip);
-        if (Date.now() - cached.timestamp < this.cacheTimeout) {
+        if (now - cached.timestamp < this.cacheTimeout) {
           console.log(`Location cache hit for IP: ${ip}`);
           return cached.data;
         } else {
@@ -75,8 +84,13 @@ export class LocationPrayerService {
       // Cache the result
       this.locationCache.set(ip, {
         data: locationData,
-        timestamp: Date.now()
+        timestamp: now
       });
+      // Enforce capacity (LRU-ish via Map iteration order)
+      if (this.locationCache.size > this.locationCacheCapacity) {
+        const oldestKey = this.locationCache.keys().next().value;
+        if (oldestKey) this.locationCache.delete(oldestKey);
+      }
       
       return locationData;
       
@@ -93,7 +107,7 @@ export class LocationPrayerService {
    */
   async getLocationFromServices(ip) {
     // Skip location detection for private IPs or unknown
-    if (!ip || ip === 'unknown' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+    if (!ip || ip === 'unknown' || this._privateIpRegex.test(ip)) {
       console.log('Skipping location detection for private IP or unknown IP');
       return this.getDefaultLocation();
     }
@@ -265,7 +279,9 @@ export class LocationPrayerService {
    */
   async getPrayerTimes(location, date = new Date()) {
     try {
-      const cacheKey = `${location.lat},${location.lng},${date.toDateString()}`;
+      const dateKey = date.toDateString();
+      const geoKey = this._geohash(location.lat, location.lng, this._geohashPrecision);
+      const cacheKey = `${geoKey}:${dateKey}`;
       
       // Check cache first
       if (this.prayerTimeCache.has(cacheKey)) {
@@ -284,6 +300,10 @@ export class LocationPrayerService {
             data: timesPrayerData,
             timestamp: Date.now()
           });
+          if (this.prayerTimeCache.size > this.prayerCacheCapacity) {
+            const oldestKey = this.prayerTimeCache.keys().next().value;
+            if (oldestKey) this.prayerTimeCache.delete(oldestKey);
+          }
           return timesPrayerData;
         }
       } catch (error) {
@@ -298,6 +318,10 @@ export class LocationPrayerService {
         data: prayerTimes,
         timestamp: Date.now()
       });
+      if (this.prayerTimeCache.size > this.prayerCacheCapacity) {
+        const oldestKey = this.prayerTimeCache.keys().next().value;
+        if (oldestKey) this.prayerTimeCache.delete(oldestKey);
+      }
       
       return prayerTimes;
     } catch (error) {
@@ -401,5 +425,35 @@ export class LocationPrayerService {
    */
   toRadians(degrees) {
     return degrees * (Math.PI/180);
+  }
+
+  // DSA: Simple base32 geohash (subset) with fixed precision
+  _geohash(lat, lon, precision = 5) {
+    // Normalize ranges
+    let latMin = -90, latMax = 90;
+    let lonMin = -180, lonMax = 180;
+    const base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
+    let hash = '';
+    let isLon = true;
+    let bit = 0;
+    let ch = 0;
+    while (hash.length < precision) {
+      if (isLon) {
+        const mid = (lonMin + lonMax) / 2;
+        if (lon > mid) { ch = (ch << 1) + 1; lonMin = mid; } else { ch = (ch << 1); lonMax = mid; }
+      } else {
+        const mid = (latMin + latMax) / 2;
+        if (lat > mid) { ch = (ch << 1) + 1; latMin = mid; } else { ch = (ch << 1); latMax = mid; }
+      }
+      isLon = !isLon;
+      bit++;
+      if (bit === 5) { hash += base32[ch]; bit = 0; ch = 0; }
+    }
+    return hash;
+  }
+
+  clearCaches() {
+    this.prayerTimeCache.clear();
+    this.locationCache.clear();
   }
 }

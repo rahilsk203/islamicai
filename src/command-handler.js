@@ -74,18 +74,29 @@ IslamicAI remembers your preferences, important information, and conversation co
         history_summary: null
       };
     }
+    // Update session data using existing session APIs
+    const sessionData = await sessionManager.getSessionData(sessionId);
+    const languageMap = {
+      'en': 'english',
+      'hi': 'hindi',
+      'bn': 'bengali',
+      'hinglish': 'hinglish'
+    };
 
-    // Store language preference in session
-    const sessionHistory = await sessionManager.getSessionHistory(sessionId);
-    const languageMessage = {
+    // Ensure userProfile exists and set preferred language
+    sessionData.userProfile = sessionData.userProfile || {};
+    sessionData.userProfile.preferredLanguage = languageMap[language] || 'english';
+
+    // Append a system note to history for transparency
+    sessionData.history = sessionData.history || [];
+    sessionData.history.push({
       role: 'system',
-      content: `[SYSTEM] User has set language preference to: ${language}. Respond in this language unless specifically asked otherwise. Maintain IslamicAI identity while adapting to the language.`,
+      content: `[SYSTEM] User set language preference to: ${sessionData.userProfile.preferredLanguage}. Respond in this language unless specifically asked otherwise. Maintain IslamicAI identity while adapting to the language.`,
       timestamp: new Date().toISOString(),
       session_id: sessionId
-    };
-    
-    sessionHistory.push(languageMessage);
-    await sessionManager.saveSessionHistory(sessionId, sessionHistory);
+    });
+
+    await sessionManager.saveSessionData(sessionId, sessionData);
 
     const languageNames = {
       'en': 'English',
