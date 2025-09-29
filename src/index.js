@@ -72,23 +72,26 @@ class OptimizedIslamicAIWorker {
     
     // Pre-computed response headers for different scenarios
     this.responseHeaders = {
-      cors: {
-        'Access-Control-Allow-Origin': '*',
+      cors: (origin) => ({
+        'Access-Control-Allow-Origin': origin || '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-      },
-      json: {
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-CSRF-Token',
+        'Access-Control-Allow-Credentials': 'true'
+      }),
+      json: (origin) => ({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-      },
-      stream: {
+        'Access-Control-Allow-Origin': origin || '*',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-CSRF-Token',
+        'Access-Control-Allow-Credentials': 'true'
+      }),
+      stream: (origin) => ({
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Cache-Control, Authorization'
-      }
+        'Access-Control-Allow-Origin': origin || '*',
+        'Access-Control-Allow-Headers': 'Cache-Control, Authorization, X-CSRF-Token',
+        'Access-Control-Allow-Credentials': 'true'
+      })
     };
   }
 
@@ -503,14 +506,18 @@ export default {
     const startTime = performance.now();
     worker.performanceMetrics.totalRequests++;
 
+    // Get the origin from the request
+    const origin = request.headers.get('Origin') || '*';
+
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         status: 200,
         headers: {
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': origin,
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-CSRF-Token',
+          'Access-Control-Allow-Credentials': 'true',
           'Access-Control-Max-Age': '86400'
         }
       });
@@ -525,56 +532,56 @@ export default {
       if (handler === 'corsPreflight') {
         return new Response(null, {
           status: 200,
-          headers: worker.responseHeaders.cors
+          headers: worker.responseHeaders.cors(origin)
         });
       }
 
       if (handler === 'healthCheck') {
-        return await this._handleHealthCheck(env);
+        return await this._handleHealthCheck(env, origin);
       }
 
       if (handler === 'internetTest') {
-        return await this._handleInternetTest(env);
+        return await this._handleInternetTest(env, origin);
       }
 
       if (handler === 'authSignup') {
-        return await this._handleAuthSignup(request, env);
+        return await this._handleAuthSignup(request, env, origin);
       }
 
       if (handler === 'authLogin') {
-        return await this._handleAuthLogin(request, env);
+        return await this._handleAuthLogin(request, env, origin);
       }
 
       if (handler === 'authGoogle') {
-        return await this._handleAuthGoogle(request, env);
+        return await this._handleAuthGoogle(request, env, origin);
       }
 
       if (handler === 'generateCSRFToken') {
-        return await this._handleGenerateCSRFToken(request, env);
+        return await this._handleGenerateCSRFToken(request, env, origin);
       }
 
       if (handler === 'prefsUpdate') {
-        return await this._handlePrefsUpdate(request, env);
+        return await this._handlePrefsUpdate(request, env, origin);
       }
 
       if (handler === 'prefsClear') {
-        return await this._handlePrefsClear(request, env);
+        return await this._handlePrefsClear(request, env, origin);
       }
 
       if (handler === 'profileUpdate') {
-        return await this._handleProfileUpdate(request, env);
+        return await this._handleProfileUpdate(request, env, origin);
       }
 
       if (handler === 'memoryClear') {
-        return await this._handleMemoryClear(request, env);
+        return await this._handleMemoryClear(request, env, origin);
       }
 
       if (handler === 'getMemoryProfile') {
-        return await this._handleGetMemoryProfile(request, env);
+        return await this._handleGetMemoryProfile(request, env, origin);
       }
 
       if (handler === 'chatRequest') {
-        return await this._handleChatRequest(request, env, ctx);
+        return await this._handleChatRequest(request, env, ctx, origin);
       }
 
       // Method not allowed
@@ -582,7 +589,7 @@ export default {
       errorResponse.error = 'Method not allowed';
       const response = new Response(JSON.stringify(errorResponse), {
         status: 405,
-        headers: worker.responseHeaders.json
+        headers: worker.responseHeaders.json(origin)
       });
       worker._returnToPool('errorObjects', errorResponse);
       return response;
@@ -606,7 +613,7 @@ export default {
 
           const response = new Response(JSON.stringify(fallbackResponse), {
             status: 200,
-            headers: worker.responseHeaders.json
+            headers: worker.responseHeaders.json(origin)
           });
           
           worker._returnToPool('responses', fallbackResponse);
@@ -621,7 +628,7 @@ export default {
 
         const response = new Response(JSON.stringify(fallbackResponse), {
           status: 503,
-          headers: worker.responseHeaders.json
+          headers: worker.responseHeaders.json(origin)
         });
         
         worker._returnToPool('responses', fallbackResponse);
@@ -637,13 +644,13 @@ export default {
    * Handle health check with caching
    * @private
    */
-  async _handleHealthCheck(env) {
+  async _handleHealthCheck(env, origin) {
     const cacheKey = 'health_check';
     const cached = worker._getCache(cacheKey);
     if (cached) {
       return new Response(JSON.stringify(cached), {
         status: 200,
-        headers: worker.responseHeaders.json
+        headers: worker.responseHeaders.json(origin)
       });
     }
 
@@ -677,7 +684,7 @@ export default {
 
     return new Response(JSON.stringify(healthData), {
       status: 200,
-      headers: worker.responseHeaders.json
+      headers: worker.responseHeaders.json(origin)
     });
   },
 
@@ -685,13 +692,13 @@ export default {
    * Handle internet test with caching
    * @private
    */
-  async _handleInternetTest(env) {
+  async _handleInternetTest(env, origin) {
     const cacheKey = 'internet_test';
     const cached = worker._getCache(cacheKey);
     if (cached) {
       return new Response(JSON.stringify(cached), {
         status: 200,
-        headers: worker.responseHeaders.json
+        headers: worker.responseHeaders.json(origin)
       });
     }
 
@@ -722,7 +729,7 @@ export default {
 
       return new Response(JSON.stringify(testData), {
         status: 200,
-        headers: worker.responseHeaders.json
+        headers: worker.responseHeaders.json(origin)
       });
     } catch (error) {
       const privacyFilter = new PrivacyFilter();
@@ -737,7 +744,7 @@ export default {
 
       return new Response(JSON.stringify(errorData), {
         status: 200,
-        headers: worker.responseHeaders.json
+        headers: worker.responseHeaders.json(origin)
       });
     }
   },
@@ -745,7 +752,7 @@ export default {
   /**
    * Auth: Email signup
    */
-  async _handleAuthSignup(request, env) {
+  async _handleAuthSignup(request, env, origin) {
     try {
       await this.ensureD1Schema(env);
       const body = await request.json();
@@ -756,11 +763,11 @@ export default {
       
       // Verify CSRF token for state-changing operations
       if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
-        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
       }
       
       if (!email || !password) {
-        return new Response(JSON.stringify({ error: 'Email and password required' }), { status: 400, headers: worker.responseHeaders.json });
+        return new Response(JSON.stringify({ error: 'Email and password required' }), { status: 400, headers: worker.responseHeaders.json(origin) });
       }
       const auth = new AuthManager(env.D1_DB, env);
       const { userId } = await auth.signupEmail(email, password);
@@ -771,21 +778,21 @@ export default {
       // Generate and set CSRF token cookie
       const csrfTokenNew = this.generateCSRFToken(env);
       const responseHeaders = {
-        ...worker.responseHeaders.json,
+        ...worker.responseHeaders.json(origin),
         'Set-Cookie': `csrf-token=${csrfTokenNew}; HttpOnly; Secure; SameSite=Strict; Path=/`
       };
       
       return new Response(JSON.stringify({ user_id: userId, token }), { status: 200, headers: responseHeaders });
     } catch (e) {
       const privacyFilter = new PrivacyFilter();
-      return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 400, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 400, headers: worker.responseHeaders.json(origin) });
     }
   },
 
   /**
    * Auth: Email login
    */
-  async _handleAuthLogin(request, env) {
+  async _handleAuthLogin(request, env, origin) {
     try {
       await this.ensureD1Schema(env);
       const body = await request.json();
@@ -796,11 +803,11 @@ export default {
       
       // Verify CSRF token for state-changing operations
       if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
-        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
       }
       
       if (!email || !password) {
-        return new Response(JSON.stringify({ error: 'Email and password required' }), { status: 400, headers: worker.responseHeaders.json });
+        return new Response(JSON.stringify({ error: 'Email and password required' }), { status: 400, headers: worker.responseHeaders.json(origin) });
       }
       const auth = new AuthManager(env.D1_DB, env);
       const { userId } = await auth.loginEmail(email, password);
@@ -815,21 +822,21 @@ export default {
       // Generate and set CSRF token cookie
       const csrfTokenNew = this.generateCSRFToken(env);
       const responseHeaders = {
-        ...worker.responseHeaders.json,
+        ...worker.responseHeaders.json(origin),
         'Set-Cookie': `csrf-token=${csrfTokenNew}; HttpOnly; Secure; SameSite=Strict; Path=/`
       };
       
       return new Response(JSON.stringify({ user_id: userId, token }), { status: 200, headers: responseHeaders });
     } catch (e) {
       const privacyFilter = new PrivacyFilter();
-      return new Response(JSON.stringify({ error: privacyFilter.filterResponse('Invalid credentials') }), { status: 401, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse('Invalid credentials') }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
   },
 
   /**
    * Auth: Google Sign-In
    */
-  async _handleAuthGoogle(request, env) {
+  async _handleAuthGoogle(request, env, origin) {
     try {
       await this.ensureD1Schema(env);
       const body = await request.json();
@@ -840,11 +847,11 @@ export default {
       
       // Verify CSRF token for state-changing operations
       if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
-        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
       }
       
       if (!id_token) {
-        return new Response(JSON.stringify({ error: 'id_token required' }), { status: 400, headers: worker.responseHeaders.json });
+        return new Response(JSON.stringify({ error: 'id_token required' }), { status: 400, headers: worker.responseHeaders.json(origin) });
       }
       const auth = new AuthManager(env.D1_DB, env);
       const { userId } = await auth.loginGoogle(id_token);
@@ -859,25 +866,37 @@ export default {
       // Generate and set CSRF token cookie
       const csrfTokenNew = this.generateCSRFToken(env);
       const responseHeaders = {
-        ...worker.responseHeaders.json,
+        ...worker.responseHeaders.json(origin),
         'Set-Cookie': `csrf-token=${csrfTokenNew}; HttpOnly; Secure; SameSite=Strict; Path=/`
       };
       
       return new Response(JSON.stringify({ user_id: userId, token }), { status: 200, headers: responseHeaders });
     } catch (e) {
       const privacyFilter = new PrivacyFilter();
-      return new Response(JSON.stringify({ error: privacyFilter.filterResponse('Google authentication failed') }), { status: 401, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse('Google authentication failed') }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
+  },
+
+  /**
+   * Generate CSRF token
+   */
+  async _handleGenerateCSRFToken(request, env, origin) {
+    const csrfToken = this.generateCSRFToken(env);
+    const responseHeaders = {
+      ...worker.responseHeaders.json(origin),
+      'Set-Cookie': `csrf-token=${csrfToken}; HttpOnly; Secure; SameSite=Strict; Path=/`
+    };
+    return new Response(JSON.stringify({ csrfToken }), { status: 200, headers: responseHeaders });
   },
 
   /**
    * Preferences: update (language, madhhab, interests)
    */
-  async _handlePrefsUpdate(request, env) {
+  async _handlePrefsUpdate(request, env, origin) {
     await this.ensureD1Schema(env);
     const userId = await this.verifyToken(request, env);
     if (!userId) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
     
     // Verify CSRF token for state-changing operations
@@ -888,50 +907,23 @@ export default {
     const csrfToken = request.headers.get('X-CSRF-Token');
     
     if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
-      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
     }
     
     const d1 = new D1MemoryManager(env.D1_DB, env);
     await d1.ensureUser(userId);
     await d1.setPreferences(userId, { language, madhhab, interests });
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json });
-  },
-
-  /**
-   * User Profile: update user profile information
-   */
-  async _handleProfileUpdate(request, env) {
-    await this.ensureD1Schema(env);
-    const userId = await this.verifyToken(request, env);
-    if (!userId) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
-    }
-    
-    // Verify CSRF token for state-changing operations
-    const body = await request.json();
-    const { name, avatar_url } = body || {};
-    
-    // Get CSRF token from header
-    const csrfToken = request.headers.get('X-CSRF-Token');
-    
-    if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
-      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
-    }
-    
-    const d1 = new D1MemoryManager(env.D1_DB, env);
-    await d1.ensureUser(userId);
-    await d1.updateUserProfile(userId, { name, avatarUrl: avatar_url });
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json(origin) });
   },
 
   /**
    * Preferences: clear one field
    */
-  async _handlePrefsClear(request, env) {
+  async _handlePrefsClear(request, env, origin) {
     await this.ensureD1Schema(env);
     const userId = await this.verifyToken(request, env);
     if (!userId) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
     
     // Verify CSRF token for state-changing operations
@@ -942,27 +934,104 @@ export default {
     const csrfToken = request.headers.get('X-CSRF-Token');
     
     if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
-      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
     }
     
     const map = { language: 'language_pref', madhhab: 'madhhab_pref', interests: 'interests_json' };
     const column = map[field];
     if (!column) {
-      return new Response(JSON.stringify({ error: 'Invalid field' }), { status: 400, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: 'Invalid field' }), { status: 400, headers: worker.responseHeaders.json(origin) });
     }
     const d1 = new D1MemoryManager(env.D1_DB, env);
     await d1.clearPreference(userId, column);
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json(origin) });
   },
-  
+
   /**
-   * Memory: clear all user memories and preferences
+   * User Profile: update user profile information
    */
-  async _handleMemoryClear(request, env) {
+  async _handleProfileUpdate(request, env, origin) {
     await this.ensureD1Schema(env);
     const userId = await this.verifyToken(request, env);
     if (!userId) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json(origin) });
+    }
+    
+    // Verify CSRF token for state-changing operations
+    const body = await request.json();
+    const { name, avatar_url } = body || {};
+    
+    // Get CSRF token from header
+    const csrfToken = request.headers.get('X-CSRF-Token');
+    
+    if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
+      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
+    }
+    
+    const d1 = new D1MemoryManager(env.D1_DB, env);
+    await d1.ensureUser(userId);
+    await d1.updateUserProfile(userId, { name, avatarUrl: avatar_url });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json(origin) });
+  },
+
+  /**
+   * Generate a random CSRF token
+   * @param {Object} env - Environment variables
+   * @returns {string} CSRF token
+   */
+  generateCSRFToken(env) {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    return btoa(String.fromCharCode(...array));
+  },
+
+  /**
+   * Verify CSRF token
+   * @param {Request} request - The incoming request
+   * @param {string} csrfToken - CSRF token to verify
+   * @returns {boolean} Whether the CSRF token is valid
+   */
+  verifyCSRFToken(request, csrfToken) {
+    // If no CSRF token is provided, allow the request (for backward compatibility)
+    if (!csrfToken) {
+      return true;
+    }
+    
+    // For stateless APIs, we use double-submit cookie pattern
+    // The CSRF token should be provided in both a header and a cookie
+    const cookieHeader = request.headers.get('Cookie') || '';
+    const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+      const [name, value] = cookie.trim().split('=');
+      acc[name] = value;
+      return acc;
+    }, {});
+    
+    // Check if CSRF token is provided in header
+    const headerCSRFToken = request.headers.get('X-CSRF-Token');
+    
+    // If we have a csrf-token cookie, verify it matches the provided token in header
+    if (cookies['csrf-token'] && headerCSRFToken) {
+      return cookies['csrf-token'] === headerCSRFToken;
+    }
+    
+    // If no csrf-token cookie exists but we have a token in the body, verify against that
+    // This is for backward compatibility
+    if (!cookies['csrf-token'] && csrfToken) {
+      return true;
+    }
+    
+    // If no csrf-token cookie exists and no header token, allow the request (for backward compatibility)
+    return true;
+  },
+
+  /**
+   * Clear user memory
+   */
+  async _handleMemoryClear(request, env, origin) {
+    await this.ensureD1Schema(env);
+    const userId = await this.verifyToken(request, env);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
     
     // Verify CSRF token for state-changing operations
@@ -972,7 +1041,7 @@ export default {
     const csrfToken = request.headers.get('X-CSRF-Token');
     
     if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
-      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
     }
     
     try {
@@ -981,21 +1050,21 @@ export default {
       // Delete all user memories using the new method
       await d1.deleteAllUserMemories(userId);
       
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json(origin) });
     } catch (e) {
       const privacyFilter = new PrivacyFilter();
-      return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 500, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 500, headers: worker.responseHeaders.json(origin) });
     }
   },
 
   /**
    * Get user memory profile
    */
-  async _handleGetMemoryProfile(request, env) {
+  async _handleGetMemoryProfile(request, env, origin) {
     await this.ensureD1Schema(env);
     const userId = await this.verifyToken(request, env);
     if (!userId) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
     
     try {
@@ -1007,21 +1076,11 @@ export default {
         user_id: userId,
         profile: userProfile,
         memory: memoryProfile
-      }), { status: 200, headers: worker.responseHeaders.json });
+      }), { status: 200, headers: worker.responseHeaders.json(origin) });
     } catch (e) {
       const privacyFilter = new PrivacyFilter();
-      return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 500, headers: worker.responseHeaders.json });
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 500, headers: worker.responseHeaders.json(origin) });
     }
-  },
-
-  /**
-   * Handle chat request with optimizations
-   * @private
-   */
-  async _handleChatRequest(request, env, ctx) {
-    return await worker._executeWithCircuitBreaker(async () => {
-      return await this.handleChatRequest(request, env, ctx);
-    });
   },
 
   /**
@@ -1030,31 +1089,37 @@ export default {
    * @returns {string} User's IP address
    */
   extractUserIP(request) {
-    const startTime = performance.now();
-    
     // Use pre-computed header priority for O(1) lookup
-    for (const header of worker.ipHeaderPriority) {
+    const ipHeaderPriority = [
+      'CF-Connecting-IP',
+      'X-Forwarded-For', 
+      'X-Real-IP',
+      'X-Client-IP',
+      'X-Forwarded',
+      'Forwarded-For',
+      'Forwarded'
+    ];
+    
+    for (const header of ipHeaderPriority) {
       const value = request.headers.get(header);
       if (value) {
         // If X-Forwarded-For contains multiple IPs, take the first one
         const finalIP = value.includes(',') ? value.split(',')[0].trim() : value;
-        
-        worker.performanceMetrics.ipExtractionTime += performance.now() - startTime;
         console.log(`User IP detected: ${finalIP} (from ${header})`);
-        
         return finalIP;
       }
     }
     
-    worker.performanceMetrics.ipExtractionTime += performance.now() - startTime;
     console.log('No valid IP address found in headers');
     return 'unknown';
   },
 
   /**
-   * Handle all chat requests with streaming by default and multiple API key support
+   * Handle chat request with optimizations
+   * @private
    */
-  async handleChatRequest(request, env, ctx) {
+  async _handleChatRequest(request, env, ctx, origin) {
+    // Extract the URL and body from the request
     const url = new URL(request.url);
     const body = await request.json();
     
@@ -1069,10 +1134,7 @@ export default {
     if (!sessionId) {
       return new Response(JSON.stringify({ error: 'Session ID required' }), {
         status: 400,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
+        headers: worker.responseHeaders.json(origin),
       });
     }
 
@@ -1104,10 +1166,7 @@ export default {
     if (!userMessage) {
       return new Response(JSON.stringify({ error: 'Message required' }), {
         status: 400,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
+        headers: worker.responseHeaders.json(origin),
       });
     }
 
@@ -1154,10 +1213,7 @@ export default {
       const reply = ok ? 'Okay, I have forgotten the most recent memory.' : 'There was nothing recent to forget.';
       return new Response(JSON.stringify({ session_id: sessionId, reply }), {
         status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
+        headers: worker.responseHeaders.json(origin)
       });
     }
 
@@ -1178,10 +1234,7 @@ export default {
       };
       return new Response(JSON.stringify(filteredCommandResult), {
         status: 200,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: worker.responseHeaders.json(origin),
       });
     }
 
@@ -1308,7 +1361,8 @@ export default {
           sessionManager,
           userIP,
           locationInfo, // Pass location info to streaming handler
-          privacyFilter // Pass privacy filter to streaming handler
+          privacyFilter, // Pass privacy filter to streaming handler
+          origin // Pass origin to streaming handler
         );
       } else {
         console.log('Using direct response (streaming disabled)');
@@ -1393,13 +1447,9 @@ export default {
 
         return new Response(JSON.stringify(response), {
           status: 200,
-          headers: { 
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          },
+          headers: worker.responseHeaders.json(origin),
         });
       }
-
     } catch (error) {
       console.error('Error generating response:', error);
       
@@ -1418,370 +1468,8 @@ export default {
 
       return new Response(JSON.stringify(errorResponse), {
         status: 200,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: worker.responseHeaders.json(origin),
       });
     }
-  },
-
-  /**
-   * Handle streaming response with optimized buffering and batching
-   * @param {GeminiAPI} geminiAPI - Gemini API instance with multiple keys
-   * @param {string} sessionId - Session identifier
-   * @param {string} userMessage - User message
-   * @param {string} contextualPrompt - Contextual prompt
-   * @param {Object} enhancedLanguageInfo - Enhanced language info
-   * @param {Object} streamingOptions - Streaming options
-   * @param {AdvancedSessionManager} sessionManager - Session manager
-   * @param {string} userIP - User's IP address for location detection
-   * @param {Object} locationInfo - User's location information
-   * @param {PrivacyFilter} privacyFilter - Privacy filter instance
-   * @returns {Response} Streaming response
-   */
-  async handleStreamingResponse(geminiAPI, sessionId, userMessage, contextualPrompt, enhancedLanguageInfo, streamingOptions, sessionManager, userIP, locationInfo, privacyFilter) {
-    const startTime = performance.now();
-    worker.performanceMetrics.streamingRequests++;
-
-    try {
-      console.log(`Starting streaming response for session ${sessionId} with ${geminiAPI.apiKeyManager.getAvailableKeyCount()} API keys`);
-      
-      // Generate streaming response using multiple API keys, now including location context
-      const stream = await geminiAPI.generateResponse(
-        [], 
-        sessionId, 
-        userMessage, 
-        contextualPrompt, 
-        enhancedLanguageInfo, 
-        streamingOptions,
-        userIP,
-        locationInfo // Pass location info to Gemini API
-      );
-      
-      // Create optimized streaming buffer
-      const buffer = {
-        chunks: [],
-        totalSize: 0,
-        maxSize: streamingOptions.chunkSize * 10, // Buffer up to 10 chunks
-        flush: () => {
-          if (buffer.chunks.length > 0) {
-            const combined = buffer.chunks.join('');
-            buffer.chunks = [];
-            buffer.totalSize = 0;
-            return combined;
-          }
-          return null;
-        },
-        add: (chunk) => {
-          buffer.chunks.push(chunk);
-          buffer.totalSize += chunk.length;
-          if (buffer.totalSize >= buffer.maxSize) {
-            return buffer.flush();
-          }
-          return null;
-        }
-      };
-      
-      // Create a new stream that includes session management with optimizations
-      const enhancedStream = new ReadableStream({
-        async start(controller) {
-          let fullResponse = '';
-          let metadataSent = false;
-          let chunkCount = 0;
-          
-          try {
-            const reader = stream.getReader();
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              
-              if (done) break;
-              
-              // Parse the chunk
-              const chunkData = this.parseStreamingChunk(value);
-              
-              // Filter content if it's a content chunk
-              if (chunkData && chunkData.type === 'content') {
-                const filteredContent = privacyFilter.filterResponse(chunkData.content);
-                fullResponse += filteredContent;
-                
-                // Create a new filtered chunk
-                const filteredChunk = `data: ${JSON.stringify({
-                  type: 'content',
-                  content: filteredContent
-                })}\n\n`;
-                
-                // Use buffering for better performance
-                const bufferedChunk = buffer.add(filteredChunk);
-                if (bufferedChunk) {
-                  controller.enqueue(new TextEncoder().encode(bufferedChunk));
-                }
-              } else {
-                // Forward non-content chunks as is
-                controller.enqueue(value);
-              }
-              
-              // Send metadata once at the beginning (skip if terse)
-              if (!metadataSent && chunkData && chunkData.type !== 'start') {
-                if (!(enhancedLanguageInfo && enhancedLanguageInfo.response_prefs && enhancedLanguageInfo.response_prefs.terse)) {
-                  const metadataObj = worker._getFromPool('metadataObjects');
-                  metadataObj.type = 'metadata';
-                  metadataObj.content = {
-                    session_id: sessionId,
-                    streaming: true,
-                    timestamp: new Date().toISOString(),
-                    language_info: enhancedLanguageInfo,
-                    location_info: locationInfo,
-                    user_preferences: authedUserId ? userPreferences : null,
-                    user_profile_info: authedUserId ? userProfile : null,
-                    chunk_info: {
-                      size: streamingOptions.chunkSize,
-                      delay: streamingOptions.delay
-                    }
-                  };
-                  
-                  const metadataChunk = `data: ${JSON.stringify(metadataObj)}\n\n`;
-                  controller.enqueue(new TextEncoder().encode(metadataChunk));
-                  
-                  worker._returnToPool('metadataObjects', metadataObj);
-                }
-                metadataSent = true;
-              }
-              
-              // Forward the chunk (already handled above for content chunks)
-              if (chunkData && chunkData.type !== 'content') {
-                controller.enqueue(value);
-              }
-              
-              chunkCount++;
-            }
-            
-            // Flush remaining buffer
-            const remainingBuffer = buffer.flush();
-            if (remainingBuffer) {
-              controller.enqueue(new TextEncoder().encode(remainingBuffer));
-            }
-            
-            // Send completion metadata (skip if terse)
-            if (!(enhancedLanguageInfo && enhancedLanguageInfo.response_prefs && enhancedLanguageInfo.response_prefs.terse)) {
-              // Filter the full response for any sensitive information
-              const filteredFullResponse = privacyFilter.filterResponse(fullResponse);
-              
-              const completionObj = worker._getFromPool('metadataObjects');
-              completionObj.type = 'completion';
-              completionObj.content = {
-                session_id: sessionId,
-                response_length: filteredFullResponse.length,
-                timestamp: new Date().toISOString(),
-                message: 'Response completed successfully ✅',
-                location_info: locationInfo,
-                user_preferences: authedUserId ? userPreferences : null,
-                user_profile_info: authedUserId ? userProfile : null,
-                chunk_count: chunkCount,
-                processing_time: performance.now() - startTime
-              };
-              
-              const completionChunk = `data: ${JSON.stringify(completionObj)}\n\n`;
-              controller.enqueue(new TextEncoder().encode(completionChunk));
-              
-              worker._returnToPool('metadataObjects', completionObj);
-            }
-            
-            // Process the complete message for session management
-            if (fullResponse.trim()) {
-              try {
-                // Filter the full response before storing in session
-                const filteredFullResponse = privacyFilter.filterResponse(fullResponse);
-                await sessionManager.processMessage(sessionId, userMessage, filteredFullResponse);
-                console.log(`Streaming session updated for ${sessionId}, response length: ${filteredFullResponse.length}`);
-              } catch (sessionError) {
-                console.error('Session processing error:', sessionError);
-              }
-            }
-            
-          } catch (error) {
-            console.error('Streaming processing error:', error);
-            // Use privacy filter for error messages
-            const safeErrorMessage = privacyFilter.filterResponse(error.message);
-            const errorChunk = this.createErrorChunk(safeErrorMessage);
-            controller.enqueue(new TextEncoder().encode(errorChunk));
-          } finally {
-            controller.close();
-          }
-        }
-      });
-
-      return new Response(enhancedStream, {
-        status: 200,
-        headers: worker.responseHeaders.stream
-      });
-
-    } catch (error) {
-      console.error('Streaming response error:', error);
-      worker.performanceMetrics.errorCount++;
-      
-      // Use privacy filter for error messages
-      const safeErrorMessage = privacyFilter.filterResponse(error.message);
-      
-      const errorResponse = worker._getFromPool('errorObjects');
-      errorResponse.error = safeErrorMessage;
-      errorResponse.session_id = sessionId;
-      
-      const response = new Response(JSON.stringify(errorResponse), {
-        status: 500,
-        headers: worker.responseHeaders.json
-      });
-      
-      worker._returnToPool('errorObjects', errorResponse);
-      return response;
-    }
-  },
-
-  /**
-   * Parse streaming chunk data
-   * @param {string} chunk - Raw chunk data
-   * @returns {Object} Parsed chunk data
-   */
-  parseStreamingChunk(chunk) {
-    try {
-      const chunkStr = typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk);
-      const lines = chunkStr.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const jsonData = line.substring(6);
-          return JSON.parse(jsonData);
-        }
-      }
-      return { type: 'unknown', content: chunkStr };
-    } catch (error) {
-      return { type: 'error', content: chunk };
-    }
-  },
-
-  /**
-   * Create error chunk for streaming
-   * @param {string} errorMessage - Error message
-   * @returns {string} Formatted error chunk
-   */
-  createErrorChunk(errorMessage) {
-    return `data: ${JSON.stringify({
-      type: 'error',
-      content: errorMessage,
-      timestamp: new Date().toISOString()
-    })}\n\n`;
-  },
-
-  /**
-   * Get worker performance metrics
-   * @returns {Object} Performance metrics
-   */
-  getWorkerPerformanceMetrics() {
-    return worker.getPerformanceMetrics();
-  },
-
-  /**
-   * Get worker cache statistics
-   * @returns {Object} Cache statistics
-   */
-  getWorkerCacheStats() {
-    return worker.getCacheStats();
-  },
-
-  /**
-   * Reset worker performance metrics
-   */
-  resetWorkerPerformanceMetrics() {
-    worker.resetPerformanceMetrics();
-  },
-
-  /**
-   * Clear worker cache
-   */
-  clearWorkerCache() {
-    worker.clearCache();
-  },
-
-  /**
-   * Get circuit breaker state
-   * @returns {string} Circuit breaker state
-   */
-  getCircuitBreakerState() {
-    return worker.circuitBreaker.state;
-  },
-
-  /**
-   * Reset circuit breaker
-   */
-  resetCircuitBreaker() {
-    worker.circuitBreaker = {
-      failures: 0,
-      lastFailureTime: 0,
-      state: 'CLOSED',
-      threshold: 5,
-      timeout: 60000
-    };
-  },
-
-  /**
-   * Generate CSRF token
-   */
-  async _handleGenerateCSRFToken(request, env) {
-    const csrfToken = this.generateCSRFToken(env);
-    const responseHeaders = {
-      ...worker.responseHeaders.json,
-      'Set-Cookie': `csrf-token=${csrfToken}; HttpOnly; Secure; SameSite=Strict; Path=/`
-    };
-    return new Response(JSON.stringify({ csrfToken }), { status: 200, headers: responseHeaders });
-  },
-
-  /**
-   * Generate a random CSRF token
-   * @param {Object} env - Environment variables
-   * @returns {string} CSRF token
-   */
-  generateCSRFToken(env) {
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    return btoa(String.fromCharCode(...array));
-  },
-
-  /**
-   * Verify CSRF token
-   * @param {Request} request - The incoming request
-   * @param {string} csrfToken - CSRF token to verify
-   * @returns {boolean} Whether the CSRF token is valid
-   */
-  verifyCSRFToken(request, csrfToken) {
-    // If no CSRF token is provided, allow the request (for backward compatibility)
-    if (!csrfToken) {
-      return true;
-    }
-    
-    // For stateless APIs, we use double-submit cookie pattern
-    // The CSRF token should be provided in both a header and a cookie
-    const cookieHeader = request.headers.get('Cookie') || '';
-    const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
-      const [name, value] = cookie.trim().split('=');
-      acc[name] = value;
-      return acc;
-    }, {});
-    
-    // Check if CSRF token is provided in header
-    const headerCSRFToken = request.headers.get('X-CSRF-Token');
-    
-    // If we have a csrf-token cookie, verify it matches the provided token in header
-    if (cookies['csrf-token'] && headerCSRFToken) {
-      return cookies['csrf-token'] === headerCSRFToken;
-    }
-    
-    // If no csrf-token cookie exists but we have a token in the body, verify against that
-    // This is for backward compatibility
-    if (!cookies['csrf-token'] && csrfToken) {
-      return true;
-    }
-    
-    // If no csrf-token cookie exists and no header token, allow the request (for backward compatibility)
-    return true;
   }
 };
