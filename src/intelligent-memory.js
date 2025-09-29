@@ -26,6 +26,14 @@ export class IntelligentMemory {
     
     // DSA: Hash Map for O(1) memory lookup
     this.memoryHashMap = new Map();
+
+    // DSA: Recent query dedupe to avoid repeated heavy scoring within short window
+    this.recentQuerySet = new Map(); // key -> timestamp
+    this.recentQueryWindowMs = 4000;
+
+    // DSA: Tiny LRU for TF-IDF results per (query,len) to reuse scoring
+    this.tfidfCache = new Map(); // key -> scored array
+    this.tfidfCacheCap = 64;
   }
 
   // Derive lightweight behavior signals from a single message (O(1) ops per message)
@@ -279,35 +287,64 @@ export class IntelligentMemory {
 
   // DSA: TF-IDF based relevance scoring for better memory retrieval
   calculateTFIDF(query, memories) {
-    const queryWords = query.toLowerCase().split(/\s+/);
-    const totalMemories = memories.length;
-    
-    return memories.map(memory => {
+    const normalizedQuery = (query || '').toLowerCase().trim();
+    const qKey = `${normalizedQuery}::${memories.length}`;
+    const now = Date.now();
+
+    // Recent dedupe: if an identical scoring was just requested, reuse cached
+    if (this.recentQuerySet.has(qKey) && (now - this.recentQuerySet.get(qKey)) < this.recentQueryWindowMs) {
+      const cached = this.tfidfCache.get(qKey);
+      if (cached) return cached;
+    }
+
+    const queryWords = normalizedQuery.split(/\s+/).filter(Boolean);
+    const totalMemories = Math.max(1, memories.length);
+
+    // Precompute IDF using global counts (single pass)
+    const docFreq = new Map();
+    for (const mem of memories) {
+      const uniq = new Set((mem.content || '').toLowerCase().split(/\s+/));
+      for (const qw of queryWords) {
+        if (uniq.has(qw)) docFreq.set(qw, (docFreq.get(qw) || 0) + 1);
+      }
+    }
+
+    const scored = memories.map(memory => {
       let score = 0;
-      const contentWords = memory.content.toLowerCase().split(/\s+/);
-      const uniqueContentWords = [...new Set(contentWords)];
-      
-      queryWords.forEach(queryWord => {
-        // Term Frequency (TF)
-        const tf = contentWords.filter(word => word === queryWord).length / contentWords.length;
-        
-        // Inverse Document Frequency (IDF)
-        const matchingMemories = uniqueContentWords.filter(word => word === queryWord).length;
-        const idf = Math.log(totalMemories / (1 + matchingMemories));
-        
-        // TF-IDF score
+      const content = (memory.content || '').toLowerCase();
+      const contentWords = content.split(/\s+/);
+      const len = Math.max(1, contentWords.length);
+
+      for (const qw of queryWords) {
+        // Term Frequency via single pass count
+        let tfCount = 0;
+        for (let i = 0; i < contentWords.length; i++) {
+          if (contentWords[i] === qw) tfCount++;
+        }
+        const tf = tfCount / len;
+        const df = docFreq.get(qw) || 0;
+        const idf = Math.log(totalMemories / (1 + df));
         score += tf * idf;
-      });
-      
+      }
+
       // Boost by priority and recency
       score *= memory.priority;
-      
-      const daysSinceLastAccess = (Date.now() - new Date(memory.lastAccessed).getTime()) / (1000 * 60 * 60 * 24);
-      const recencyBoost = Math.max(0.5, 1.5 - (daysSinceLastAccess / 30)); // Boost for recent memories
+      const daysSinceLastAccess = (now - new Date(memory.lastAccessed).getTime()) / (1000 * 60 * 60 * 24);
+      const recencyBoost = Math.max(0.5, 1.5 - (daysSinceLastAccess / 30));
       score *= recencyBoost;
-      
+
       return { ...memory, tfidfScore: score };
     });
+
+    // Save to tiny LRU cache
+    this.recentQuerySet.set(qKey, now);
+    this.tfidfCache.set(qKey, scored);
+    if (this.tfidfCache.size > this.tfidfCacheCap) {
+      const oldestKey = this.tfidfCache.keys().next().value;
+      this.tfidfCache.delete(oldestKey);
+    }
+
+    return scored;
   }
 
   // DSA: LRU Cache Management

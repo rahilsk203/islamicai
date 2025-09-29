@@ -16,7 +16,7 @@
 // - Graph-based API key health monitoring
 // - Segment Tree for range queries on performance metrics
 
-import { IslamicPrompt } from './islamic-prompt.js';
+import { IslamicPrompt, IslamicGreetingSystem } from './islamic-prompt.js';
 import { APIKeyManager } from './api-key-manager.js';
 import { InternetDataProcessor } from './internet-data-processor.js';
 import { PrivacyFilter } from './privacy-filter.js';
@@ -558,9 +558,36 @@ class GeminiAPI {
       this.performanceMetrics.memoryPoolHits++;
       
       try {
-        // Advanced query preprocessing with Bloom Filter
+        // Check for Islamic greetings first (special handling)
+        const greetingResult = this.islamicPrompt.detectAndHandleGreeting(userInput);
+        if (greetingResult) {
+          console.log(`Islamic greeting detected: ${greetingResult.greetingType} in ${greetingResult.language}`);
+          this.performanceMetrics.successfulRequests++;
+          this._updatePerformanceMetrics(startTime, false);
+          return greetingResult.response;
+        }
+
+        // Advanced query preprocessing with Bloom Filter + recent dedupe window
         const normalizedQuery = userInput.trim().toLowerCase();
         const queryHash = this.rollingHash.hash(normalizedQuery);
+        
+        // Short-lived in-memory recent query dedupe (per process)
+        this._recentQueries = this._recentQueries || new Map(); // key -> timestamp
+        const now = Date.now();
+        const recentWindowMs = 5000; // 5 seconds window to dedupe accidental repeats
+        // Cleanup old entries occasionally (O(k)), k is small
+        if (this._recentQueries.size > 256) {
+          for (const [k, t] of this._recentQueries.entries()) {
+            if (now - t > recentWindowMs) this._recentQueries.delete(k);
+          }
+        }
+        const rqKey = `${sessionId}:${queryHash}`;
+        if (this._recentQueries.has(rqKey) && (now - this._recentQueries.get(rqKey)) < recentWindowMs) {
+          this.performanceMetrics.cacheHits++;
+          this._updatePerformanceMetrics(startTime, false);
+          return this.privacyFilter.filterResponse('Please wait a moment before repeating the same question.');
+        }
+        this._recentQueries.set(rqKey, now);
         
         // Bloom filter check for duplicate queries (O(1) operation)
         if (this.bloomFilter.mightContain(normalizedQuery)) {

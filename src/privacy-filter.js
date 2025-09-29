@@ -34,32 +34,32 @@ export class PrivacyFilter {
       { pattern: /hash map/i, replacement: '[INTERNAL SYSTEM]' },
       { pattern: /data structure/i, replacement: '[INTERNAL SYSTEM]' },
       
-      // Implementation details
-      { pattern: /implementation/i, replacement: '[INTERNAL SYSTEM]' },
-      { pattern: /algorithm/i, replacement: '[INTERNAL SYSTEM]' },
-      { pattern: /dsa/i, replacement: '[INTERNAL SYSTEM]' }, // Data Structures and Algorithms
-      { pattern: /performance.*optimization/i, replacement: '[INTERNAL SYSTEM]' },
-      { pattern: /compression/i, replacement: '[INTERNAL SYSTEM]' },
-      { pattern: /decompression/i, replacement: '[INTERNAL SYSTEM]' },
+      // Implementation details (only when clearly technical context)
+      { pattern: /\bimplementation\b.*\b(?:system|code|software|programming)/i, replacement: '[INTERNAL SYSTEM]' },
+      { pattern: /\balgorithm\b.*\b(?:data|structure|optimization|computer)/i, replacement: '[INTERNAL SYSTEM]' },
+      { pattern: /\bdsa\b.*\b(?:data|structure|algorithm)/i, replacement: '[INTERNAL SYSTEM]' },
+      { pattern: /\bperformance.*optimization\b.*\b(?:system|code|software)/i, replacement: '[INTERNAL SYSTEM]' },
+      { pattern: /\bcompression\b.*\b(?:data|file|system)/i, replacement: '[INTERNAL SYSTEM]' },
+      { pattern: /\bdecompression\b.*\b(?:data|file|system)/i, replacement: '[INTERNAL SYSTEM]' },
       
-      // Configuration and environment
-      { pattern: /env\..*/i, replacement: '[REDACTED]' },
-      { pattern: /environment.*variable/i, replacement: '[REDACTED]' },
-      { pattern: /config/i, replacement: '[REDACTED]' },
-      { pattern: /configuration/i, replacement: '[REDACTED]' },
-      { pattern: /setting/i, replacement: '[REDACTED]' },
+      // Configuration and environment (only when clearly technical context)
+      { pattern: /\benv\.[a-zA-Z_]+/i, replacement: '[REDACTED]' },
+      { pattern: /\benvironment.*variable\b.*\b(?:system|code|software)/i, replacement: '[REDACTED]' },
+      { pattern: /\bconfig\b.*\b(?:file|system|software|programming)/i, replacement: '[REDACTED]' },
+      { pattern: /\bconfiguration\b.*\b(?:system|software|programming)/i, replacement: '[REDACTED]' },
+      { pattern: /\bsetting\b.*\b(?:system|software|programming|config)/i, replacement: '[REDACTED]' },
       
-      // Development information
-      { pattern: /development/i, replacement: '[REDACTED]' },
-      { pattern: /developed by/i, replacement: '[REDACTED]' },
-      { pattern: /created by/i, replacement: '[REDACTED]' },
-      { pattern: /google/i, replacement: '[REDACTED]' },
-      { pattern: /openai/i, replacement: '[REDACTED]' },
-      { pattern: /microsoft/i, replacement: '[REDACTED]' },
-      { pattern: /meta/i, replacement: '[REDACTED]' },
-      { pattern: /facebook/i, replacement: '[REDACTED]' },
-      { pattern: /amazon/i, replacement: '[REDACTED]' },
-      { pattern: /aws/i, replacement: '[REDACTED]' },
+      // Development information (only when clearly technical context)
+      { pattern: /\bdevelopment\b.*\b(?:team|company|firm|software|system)/i, replacement: '[REDACTED]' },
+      { pattern: /\bdeveloped by\b.*\b(?:google|openai|microsoft|meta|facebook|amazon)/i, replacement: '[REDACTED]' },
+      { pattern: /\bcreated by\b.*\b(?:google|openai|microsoft|meta|facebook|amazon)/i, replacement: '[REDACTED]' },
+      { pattern: /\bgoogle\b.*\b(?:ai|search|api|model|developed|created)/i, replacement: '[REDACTED]' },
+      { pattern: /\bopenai\b.*\b(?:gpt|model|api|developed|created)/i, replacement: '[REDACTED]' },
+      { pattern: /\bmicrosoft\b.*\b(?:azure|ai|model|api|developed|created)/i, replacement: '[REDACTED]' },
+      { pattern: /\bmeta\b.*\b(?:ai|model|api|developed|created)/i, replacement: '[REDACTED]' },
+      { pattern: /\bfacebook\b.*\b(?:ai|model|api|developed|created)/i, replacement: '[REDACTED]' },
+      { pattern: /\bamazon\b.*\b(?:aws|ai|model|api|developed|created)/i, replacement: '[REDACTED]' },
+      { pattern: /\baws\b.*\b(?:service|api|cloud|developed|created)/i, replacement: '[REDACTED]' },
     ];
     
     // Allowed Islamic technical terms that should not be filtered
@@ -82,6 +82,13 @@ export class PrivacyFilter {
     }
     
     let filteredResponse = response;
+
+    // Fast-path short-circuit: if no likely technical keywords, skip heavy regex loop
+    // This drastically reduces cost on regular user content
+    const maybeTechnical = /api|model|config|system|internal|cache|memory|debug|log|gemini|openai|google|aws|azure|kv|namespace|worker/i.test(filteredResponse);
+    if (!maybeTechnical) {
+      return filteredResponse;
+    }
     
     // Apply sensitive pattern filtering
     this.sensitivePatterns.forEach(({ pattern, replacement }) => {

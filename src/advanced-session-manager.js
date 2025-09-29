@@ -21,6 +21,10 @@ export class AdvancedSessionManager {
       bloomFilterHits: 0,
       bloomFilterMisses: 0
     };
+
+    // LRU cache for contextual prompts (session-aware)
+    this.promptCache = new Map();
+    this.promptCacheCapacity = 200;
   }
 
   // Simplified cache management
@@ -99,7 +103,19 @@ export class AdvancedSessionManager {
   // Simplified context retrieval for better performance
   async getContextualPrompt(sessionId, userMessage) {
     const sessionData = await this.getSessionData(sessionId);
-    return this._buildSimpleContext(sessionData, userMessage);
+
+    // Build cache key using session and a lightweight hash of userMessage
+    const cacheKey = this._buildPromptCacheKey(sessionId, userMessage);
+    const cached = this._getFromPromptCache(cacheKey);
+    if (cached) {
+      this.performanceStats.cacheHits++;
+      return cached;
+    }
+
+    this.performanceStats.cacheMisses++;
+    const prompt = this._buildSimpleContext(sessionData, userMessage);
+    this._putInPromptCache(cacheKey, prompt);
+    return prompt;
   }
 
   // Simplified context building for better performance
@@ -107,41 +123,119 @@ export class AdvancedSessionManager {
     // Build minimal contextual prompt
     let contextualPrompt = this.buildBasePrompt(sessionData.userProfile);
     
-    // Include recent conversation history for better context
+    // Detect query type for better focus
+    const queryType = this._detectQueryType(userMessage);
+    if (queryType) {
+      contextualPrompt += `\n**QUERY TYPE DETECTED: ${queryType}**\n`;
+      contextualPrompt += `- Focus ONLY on ${queryType} related information\n`;
+      contextualPrompt += `- Do NOT include information about other topics\n`;
+    }
+    
+    // Include minimal recent conversation history for context
     if (sessionData.history.length > 0) {
-      contextualPrompt += '\n\n**Recent Conversation History:**\n';
-      // Include last 4 messages (2 exchanges) for better context
-      const recentHistory = sessionData.history.slice(-4);
+      contextualPrompt += '\n\n**Recent Conversation History (for context only):**\n';
+      // Include only last 2 messages (1 exchange) to prevent topic mixing
+      const recentHistory = sessionData.history.slice(-2);
       recentHistory.forEach(msg => {
         const role = msg.role === 'user' ? 'User' : 'IslamicAI';
         contextualPrompt += `${role}: ${msg.content}\n`;
       });
       
       // Add instruction to maintain conversation context
-      contextualPrompt += '\n**Conversation Context Instructions:**\n';
-      contextualPrompt += '- Respond DIRECTLY and SPECIFICALLY to the user\'s current question/message\n';
-      contextualPrompt += '- Do NOT repeat previous responses or go off-topic\n';
-      contextualPrompt += '- If user asks "kasa hai" (how are you), respond about your status, not previous topics\n';
-      contextualPrompt += '- If user asks for time, provide current time, not previous conversation topics\n';
-      contextualPrompt += '- Stay focused on the user\'s immediate question\n';
+      contextualPrompt += '\n**CRITICAL CONVERSATION RULES:**\n';
+      contextualPrompt += '- IGNORE previous conversation topics unless directly relevant\n';
+      contextualPrompt += '- Respond ONLY to the user\'s CURRENT question/message\n';
+      contextualPrompt += '- If user asks "kasa hai" (how are you), respond about your status ONLY\n';
+      contextualPrompt += '- If user asks for time, provide current time ONLY, not weather or other topics\n';
+      contextualPrompt += '- If user asks for weather, provide weather ONLY, not time or other topics\n';
+      contextualPrompt += '- If user asks for news, provide news ONLY, not previous topics\n';
+      contextualPrompt += '- DO NOT mix different topics in your response\n';
+      contextualPrompt += '- Stay 100% focused on the user\'s immediate question\n';
     }
     
-    // Add memory context if available
+    // Add memory context if available (only if highly relevant)
     if (sessionData.memories.length > 0) {
-      contextualPrompt += '\n**Important Context from Previous Messages:**\n';
-      // Get most relevant memories
+      // Get most relevant memories with higher threshold
       const relevantMemories = this.memory.getRelevantMemories(
         sessionData.memories, 
         userMessage, 
-        5
+        2 // Reduced from 5 to 2
       );
       
+      // Only include memories if they are highly relevant to current query
+      if (relevantMemories.length > 0) {
+        contextualPrompt += '\n**Highly Relevant Context:**\n';
       relevantMemories.forEach(memory => {
         contextualPrompt += `- ${memory.content}\n`;
       });
+      }
     }
     
     return contextualPrompt;
+  }
+
+  // ---- LRU cache helpers for contextual prompts ----
+  _buildPromptCacheKey(sessionId, userMessage = '') {
+    // Rolling hash for speed and stability
+    let hash = 0;
+    const text = (userMessage || '').slice(-256); // last 256 chars are usually most relevant
+    for (let i = 0; i < text.length; i++) {
+      hash = (hash * 131 + text.charCodeAt(i)) >>> 0;
+    }
+    return `${sessionId}:${hash}`;
+  }
+
+  _getFromPromptCache(key) {
+    if (!this.promptCache.has(key)) return null;
+    const value = this.promptCache.get(key);
+    // Refresh LRU order: delete and set moves it to the end
+    this.promptCache.delete(key);
+    this.promptCache.set(key, value);
+    return value;
+  }
+
+  _putInPromptCache(key, value) {
+    if (this.promptCache.has(key)) {
+      this.promptCache.delete(key);
+    }
+    this.promptCache.set(key, value);
+    if (this.promptCache.size > this.promptCacheCapacity) {
+      // Evict least-recently used (first entry in Map)
+      const oldestKey = this.promptCache.keys().next().value;
+      this.promptCache.delete(oldestKey);
+    }
+  }
+
+  // Detect query type for better context focus
+  _detectQueryType(userMessage) {
+    const message = userMessage.toLowerCase();
+    
+    // Time-related queries
+    if (/\b(time|time|samay|waqt|abhi|now|current)\b/.test(message)) {
+      return 'TIME';
+    }
+    
+    // Weather-related queries
+    if (/\b(weather|mausam|hawa|temperature|barish|rain|sunny|garam|thand|weater)\b/.test(message)) {
+      return 'WEATHER';
+    }
+    
+    // News-related queries
+    if (/\b(news|khabar|update|latest|aj|today|gaza|israel|palestine)\b/.test(message)) {
+      return 'NEWS';
+    }
+    
+    // Greeting queries
+    if (/\b(hello|hi|salam|assalam|kasa|kaise|how are you)\b/.test(message)) {
+      return 'GREETING';
+    }
+    
+    // Islamic queries
+    if (/\b(quran|hadith|islam|allah|prayer|namaz|dua|islamic)\b/.test(message)) {
+      return 'ISLAMIC_GUIDANCE';
+    }
+    
+    return null;
   }
 
   // DSA: Advanced context building with tree and graph algorithms
