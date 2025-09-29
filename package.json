@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev src/index.js",
-    "deploy": "wrangler deploy --minify src/index.js"
+    "deploy": "wrangler deploy --minify src/index.js",
+    "test:api": "node test.js"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20240117.0"

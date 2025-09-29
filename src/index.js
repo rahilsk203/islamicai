@@ -4,6 +4,8 @@ import { CommandHandler } from './command-handler.js';
 import { AdaptiveLanguageSystem } from './adaptive-language-system.js';
 import { PrivacyFilter } from './privacy-filter.js';
 import { PersistentMemoryManager } from './persistent-memory-manager.js';
+import { D1MemoryManager, D1_SCHEMA_SQL } from './d1-memory-manager.js';
+import { AuthManager, AUTH_SCHEMA_SQL } from './auth-manager.js';
 
 /**
  * DSA-Optimized Islamic AI Worker
@@ -72,19 +74,20 @@ class OptimizedIslamicAIWorker {
     this.responseHeaders = {
       cors: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
       },
       json: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
       },
       stream: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Cache-Control'
+        'Access-Control-Allow-Headers': 'Cache-Control, Authorization'
       }
     };
   }
@@ -99,9 +102,31 @@ class OptimizedIslamicAIWorker {
     
     const routes = {
       'GET /health': 'healthCheck',
+      'OPTIONS /health': 'corsPreflight',
       'GET /test-internet': 'internetTest',
+      'OPTIONS /test-internet': 'corsPreflight',
+      'POST /auth/signup': 'authSignup',
+      'OPTIONS /auth/signup': 'corsPreflight',
+      'POST /auth/login': 'authLogin',
+      'OPTIONS /auth/login': 'corsPreflight',
+      'POST /auth/google': 'authGoogle',
+      'OPTIONS /auth/google': 'corsPreflight',
+      'POST /auth/csrf-token': 'generateCSRFToken',
+      'OPTIONS /auth/csrf-token': 'corsPreflight',
+      'POST /prefs/update': 'prefsUpdate',
+      'OPTIONS /prefs/update': 'corsPreflight',
+      'POST /prefs/clear': 'prefsClear',
+      'OPTIONS /prefs/clear': 'corsPreflight',
+      'POST /profile/update': 'profileUpdate',
+      'OPTIONS /profile/update': 'corsPreflight',
+      'POST /memory/clear': 'memoryClear',
+      'OPTIONS /memory/clear': 'corsPreflight',
+      'GET /memory/profile': 'getMemoryProfile',
+      'OPTIONS /memory/profile': 'corsPreflight',
       'POST /api/chat': 'chatRequest',
+      'OPTIONS /api/chat': 'corsPreflight',
       'POST /api/stream': 'chatRequest',
+      'OPTIONS /api/stream': 'corsPreflight',
       'POST /': 'chatRequest',
       'OPTIONS /': 'corsPreflight'
     };
@@ -144,7 +169,24 @@ class OptimizedIslamicAIWorker {
     
     // Special handling for OPTIONS method - match any path
     if (method === 'OPTIONS') {
-      return current._handler || null;
+      // Try to match exact path first
+      const segments = pathname.split('/').filter(s => s);
+      let optionsCurrent = this.requestRouter['OPTIONS'];
+      
+      for (const segment of segments) {
+        if (optionsCurrent[segment]) {
+          optionsCurrent = optionsCurrent[segment];
+        } else {
+          break;
+        }
+      }
+      
+      if (optionsCurrent._handler) {
+        return optionsCurrent._handler;
+      }
+      
+      // Fallback to corsPreflight handler
+      return 'corsPreflight';
     }
     
     const segments = pathname.split('/').filter(s => s);
@@ -328,6 +370,93 @@ class OptimizedIslamicAIWorker {
 const worker = new OptimizedIslamicAIWorker();
 
 export default {
+  /** Ensure D1 schema exists (idempotent) */
+  async ensureD1Schema(env) {
+    try {
+      if (!env || !env.D1_DB) return;
+      // Run minimal CREATE TABLE IF NOT EXISTS batch
+      const statements = (D1_SCHEMA_SQL + '\n' + AUTH_SCHEMA_SQL)
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+      for (const stmt of statements) {
+        try {
+          await env.D1_DB.prepare(stmt).run();
+        } catch {}
+      }
+    } catch (e) {
+      console.log('D1 schema ensure failed:', e.message);
+    }
+  },
+  /**
+   * JWT token utilities for auth
+   */
+  async signToken(userId, env) {
+    const secret = env.AUTH_SECRET || 'dev-secret';
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    
+    // Create JWT payload with expiration (24 hours)
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+      sub: userId,
+      exp: now + (24 * 60 * 60), // 24 hours
+      iat: now,
+      iss: 'islamic-ai',
+      aud: 'islamic-ai-users'
+    };
+    
+    // Encode header and payload
+    const header = { alg: 'HS256', typ: 'JWT' };
+    const headerEncoded = btoa(JSON.stringify(header)).replace(/=/g, '');
+    const payloadEncoded = btoa(JSON.stringify(payload)).replace(/=/g, '');
+    const data = `${headerEncoded}.${payloadEncoded}`;
+    
+    // Sign the data
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+    const signature = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g, '');
+    
+    return `${data}.${signature}`;
+  },
+
+  async verifyToken(request, env) {
+    const auth = request.headers.get('Authorization') || '';
+    if (!auth.startsWith('Bearer ')) return null;
+    
+    const token = auth.substring(7);
+    const secret = env.AUTH_SECRET || 'dev-secret';
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    
+    // Split token into parts
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    
+    const [headerEncoded, payloadEncoded, signature] = parts;
+    const data = `${headerEncoded}.${payloadEncoded}`;
+    
+    // Verify signature
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
+    const expectedSignature = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g, '');
+    if (signature !== expectedSignature) return null;
+    
+    // Decode and validate payload
+    try {
+      const payload = JSON.parse(atob(payloadEncoded));
+      const now = Math.floor(Date.now() / 1000);
+      
+      // Check expiration
+      if (payload.exp && payload.exp < now) return null;
+      
+      // Check issuer
+      if (payload.iss !== 'islamic-ai') return null;
+      
+      // Check audience
+      if (payload.aud !== 'islamic-ai-users') return null;
+      
+      return payload.sub; // Return user ID
+    } catch (e) {
+      return null;
+    }
+  },
   /**
    * Get configured API keys with fallback
    * @param {Object} env - Environment variables
@@ -374,6 +503,19 @@ export default {
     const startTime = performance.now();
     worker.performanceMetrics.totalRequests++;
 
+    // Handle CORS preflight requests
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 200,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+
     try {
       const url = new URL(request.url);
       
@@ -393,6 +535,42 @@ export default {
 
       if (handler === 'internetTest') {
         return await this._handleInternetTest(env);
+      }
+
+      if (handler === 'authSignup') {
+        return await this._handleAuthSignup(request, env);
+      }
+
+      if (handler === 'authLogin') {
+        return await this._handleAuthLogin(request, env);
+      }
+
+      if (handler === 'authGoogle') {
+        return await this._handleAuthGoogle(request, env);
+      }
+
+      if (handler === 'generateCSRFToken') {
+        return await this._handleGenerateCSRFToken(request, env);
+      }
+
+      if (handler === 'prefsUpdate') {
+        return await this._handlePrefsUpdate(request, env);
+      }
+
+      if (handler === 'prefsClear') {
+        return await this._handlePrefsClear(request, env);
+      }
+
+      if (handler === 'profileUpdate') {
+        return await this._handleProfileUpdate(request, env);
+      }
+
+      if (handler === 'memoryClear') {
+        return await this._handleMemoryClear(request, env);
+      }
+
+      if (handler === 'getMemoryProfile') {
+        return await this._handleGetMemoryProfile(request, env);
       }
 
       if (handler === 'chatRequest') {
@@ -565,6 +743,278 @@ export default {
   },
 
   /**
+   * Auth: Email signup
+   */
+  async _handleAuthSignup(request, env) {
+    try {
+      await this.ensureD1Schema(env);
+      const body = await request.json();
+      const { email, password } = body || {};
+      
+      // Get CSRF token from header
+      const csrfToken = request.headers.get('X-CSRF-Token');
+      
+      // Verify CSRF token for state-changing operations
+      if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
+        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+      }
+      
+      if (!email || !password) {
+        return new Response(JSON.stringify({ error: 'Email and password required' }), { status: 400, headers: worker.responseHeaders.json });
+      }
+      const auth = new AuthManager(env.D1_DB, env);
+      const { userId } = await auth.signupEmail(email, password);
+      const d1 = new D1MemoryManager(env.D1_DB, env);
+      await d1.ensureUser(userId, { email, provider: 'local' });
+      const token = await this.signToken(userId, env);
+      
+      // Generate and set CSRF token cookie
+      const csrfTokenNew = this.generateCSRFToken(env);
+      const responseHeaders = {
+        ...worker.responseHeaders.json,
+        'Set-Cookie': `csrf-token=${csrfTokenNew}; HttpOnly; Secure; SameSite=Strict; Path=/`
+      };
+      
+      return new Response(JSON.stringify({ user_id: userId, token }), { status: 200, headers: responseHeaders });
+    } catch (e) {
+      const privacyFilter = new PrivacyFilter();
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 400, headers: worker.responseHeaders.json });
+    }
+  },
+
+  /**
+   * Auth: Email login
+   */
+  async _handleAuthLogin(request, env) {
+    try {
+      await this.ensureD1Schema(env);
+      const body = await request.json();
+      const { email, password } = body || {};
+      
+      // Get CSRF token from header
+      const csrfToken = request.headers.get('X-CSRF-Token');
+      
+      // Verify CSRF token for state-changing operations
+      if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
+        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+      }
+      
+      if (!email || !password) {
+        return new Response(JSON.stringify({ error: 'Email and password required' }), { status: 400, headers: worker.responseHeaders.json });
+      }
+      const auth = new AuthManager(env.D1_DB, env);
+      const { userId } = await auth.loginEmail(email, password);
+      const d1 = new D1MemoryManager(env.D1_DB, env);
+      await d1.ensureUser(userId, { email, provider: 'local' });
+      
+      // Update user profile with login information
+      await d1.updateUserProfile(userId, {});
+      
+      const token = await this.signToken(userId, env);
+      
+      // Generate and set CSRF token cookie
+      const csrfTokenNew = this.generateCSRFToken(env);
+      const responseHeaders = {
+        ...worker.responseHeaders.json,
+        'Set-Cookie': `csrf-token=${csrfTokenNew}; HttpOnly; Secure; SameSite=Strict; Path=/`
+      };
+      
+      return new Response(JSON.stringify({ user_id: userId, token }), { status: 200, headers: responseHeaders });
+    } catch (e) {
+      const privacyFilter = new PrivacyFilter();
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse('Invalid credentials') }), { status: 401, headers: worker.responseHeaders.json });
+    }
+  },
+
+  /**
+   * Auth: Google Sign-In
+   */
+  async _handleAuthGoogle(request, env) {
+    try {
+      await this.ensureD1Schema(env);
+      const body = await request.json();
+      const { id_token } = body || {};
+      
+      // Get CSRF token from header
+      const csrfToken = request.headers.get('X-CSRF-Token');
+      
+      // Verify CSRF token for state-changing operations
+      if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
+        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+      }
+      
+      if (!id_token) {
+        return new Response(JSON.stringify({ error: 'id_token required' }), { status: 400, headers: worker.responseHeaders.json });
+      }
+      const auth = new AuthManager(env.D1_DB, env);
+      const { userId } = await auth.loginGoogle(id_token);
+      const d1 = new D1MemoryManager(env.D1_DB, env);
+      await d1.ensureUser(userId, { provider: 'google' });
+      
+      // Update user profile with login information
+      await d1.updateUserProfile(userId, {});
+      
+      const token = await this.signToken(userId, env);
+      
+      // Generate and set CSRF token cookie
+      const csrfTokenNew = this.generateCSRFToken(env);
+      const responseHeaders = {
+        ...worker.responseHeaders.json,
+        'Set-Cookie': `csrf-token=${csrfTokenNew}; HttpOnly; Secure; SameSite=Strict; Path=/`
+      };
+      
+      return new Response(JSON.stringify({ user_id: userId, token }), { status: 200, headers: responseHeaders });
+    } catch (e) {
+      const privacyFilter = new PrivacyFilter();
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse('Google authentication failed') }), { status: 401, headers: worker.responseHeaders.json });
+    }
+  },
+
+  /**
+   * Preferences: update (language, madhhab, interests)
+   */
+  async _handlePrefsUpdate(request, env) {
+    await this.ensureD1Schema(env);
+    const userId = await this.verifyToken(request, env);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
+    }
+    
+    // Verify CSRF token for state-changing operations
+    const body = await request.json();
+    const { language, madhhab, interests } = body || {};
+    
+    // Get CSRF token from header
+    const csrfToken = request.headers.get('X-CSRF-Token');
+    
+    if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
+      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+    }
+    
+    const d1 = new D1MemoryManager(env.D1_DB, env);
+    await d1.ensureUser(userId);
+    await d1.setPreferences(userId, { language, madhhab, interests });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json });
+  },
+
+  /**
+   * User Profile: update user profile information
+   */
+  async _handleProfileUpdate(request, env) {
+    await this.ensureD1Schema(env);
+    const userId = await this.verifyToken(request, env);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
+    }
+    
+    // Verify CSRF token for state-changing operations
+    const body = await request.json();
+    const { name, avatar_url } = body || {};
+    
+    // Get CSRF token from header
+    const csrfToken = request.headers.get('X-CSRF-Token');
+    
+    if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
+      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+    }
+    
+    const d1 = new D1MemoryManager(env.D1_DB, env);
+    await d1.ensureUser(userId);
+    await d1.updateUserProfile(userId, { name, avatarUrl: avatar_url });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json });
+  },
+
+  /**
+   * Preferences: clear one field
+   */
+  async _handlePrefsClear(request, env) {
+    await this.ensureD1Schema(env);
+    const userId = await this.verifyToken(request, env);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
+    }
+    
+    // Verify CSRF token for state-changing operations
+    const body = await request.json();
+    const { field } = body || {};
+    
+    // Get CSRF token from header
+    const csrfToken = request.headers.get('X-CSRF-Token');
+    
+    if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
+      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+    }
+    
+    const map = { language: 'language_pref', madhhab: 'madhhab_pref', interests: 'interests_json' };
+    const column = map[field];
+    if (!column) {
+      return new Response(JSON.stringify({ error: 'Invalid field' }), { status: 400, headers: worker.responseHeaders.json });
+    }
+    const d1 = new D1MemoryManager(env.D1_DB, env);
+    await d1.clearPreference(userId, column);
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json });
+  },
+  
+  /**
+   * Memory: clear all user memories and preferences
+   */
+  async _handleMemoryClear(request, env) {
+    await this.ensureD1Schema(env);
+    const userId = await this.verifyToken(request, env);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
+    }
+    
+    // Verify CSRF token for state-changing operations
+    const body = await request.json();
+    
+    // Get CSRF token from header
+    const csrfToken = request.headers.get('X-CSRF-Token');
+    
+    if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
+      return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json });
+    }
+    
+    try {
+      const d1 = new D1MemoryManager(env.D1_DB, env);
+      
+      // Delete all user memories using the new method
+      await d1.deleteAllUserMemories(userId);
+      
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json });
+    } catch (e) {
+      const privacyFilter = new PrivacyFilter();
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 500, headers: worker.responseHeaders.json });
+    }
+  },
+
+  /**
+   * Get user memory profile
+   */
+  async _handleGetMemoryProfile(request, env) {
+    await this.ensureD1Schema(env);
+    const userId = await this.verifyToken(request, env);
+    if (!userId) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json });
+    }
+    
+    try {
+      const d1 = new D1MemoryManager(env.D1_DB, env);
+      const memoryProfile = await d1.getUserMemoryProfile(userId);
+      const userProfile = await d1.getUserProfile(userId);
+      
+      return new Response(JSON.stringify({ 
+        user_id: userId,
+        profile: userProfile,
+        memory: memoryProfile
+      }), { status: 200, headers: worker.responseHeaders.json });
+    } catch (e) {
+      const privacyFilter = new PrivacyFilter();
+      return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 500, headers: worker.responseHeaders.json });
+    }
+  },
+
+  /**
    * Handle chat request with optimizations
    * @private
    */
@@ -627,7 +1077,9 @@ export default {
     }
 
     const userMessage = body.message;
-    const userIdFromBody = body.user_id || body.userId || null;
+    // Authenticated user (personalized memory only if authenticated)
+    const authedUserId = await this.verifyToken(request, env);
+    const userIdFromBody = authedUserId || body.user_id || body.userId || null;
     const memoryOptOut = body.memory_opt_out === true;
     // Brevity controls (default to terse)
     const mode = (body.mode || '').toLowerCase();
@@ -745,6 +1197,34 @@ export default {
     });
 
     let contextualPrompt = contextualPromptBase;
+    // D1-backed long-term preferences and summaries for authenticated users
+    let userPreferences = null;
+    let recentSummaries = [];
+    let userProfile = null;
+    if (authedUserId) {
+      try {
+        const d1 = new D1MemoryManager(env.D1_DB, env);
+        await d1.ensureUser(authedUserId);
+        userPreferences = await d1.getPreferences(authedUserId);
+        recentSummaries = await d1.getRecentSummaries(authedUserId, 3);
+        userProfile = await d1.getUserProfile(authedUserId);
+        
+        if (userPreferences.language) {
+          contextualPrompt += `\n\nUser language preference: ${userPreferences.language}.`;
+        }
+        if (userPreferences.madhhab) {
+          contextualPrompt += `\nMadhhab preference: ${userPreferences.madhhab}.`;
+        }
+        if (userPreferences.interests && userPreferences.interests.length) {
+          contextualPrompt += `\nInterests: ${userPreferences.interests.join(', ')}.`;
+        }
+        if (recentSummaries.length) {
+          contextualPrompt += `\nRecent discussion summaries: ${recentSummaries.map(s => `- ${s}`).join(' ')}`;
+        }
+      } catch (e) {
+        console.log('D1 recall failed:', e.message);
+      }
+    }
     if (recall.similar && recall.similar.length > 0) {
       contextualPrompt += '\n\n**Relevant Prior Memories:**\n';
       recall.similar.forEach(rec => {
@@ -867,6 +1347,15 @@ export default {
             const summaryText = sessionManager.getHistorySummary(sessionData.history) || '';
             if (summaryText) {
               await persistentMemory.addEpisodicSummary(userId, sessionId, summaryText);
+              // Also store compressed summary to D1 for authenticated users
+              if (authedUserId) {
+                try {
+                  const d1 = new D1MemoryManager(env.D1_DB, env);
+                  await d1.addDiscussionSummary(authedUserId, sessionId, summaryText);
+                  // Create a memory checkpoint for long conversations
+                  await d1.createMemoryCheckpoint(authedUserId, sessionId, sessionData.history);
+                } catch {}
+              }
             }
           } catch {}
         }
@@ -888,6 +1377,8 @@ export default {
           language_info: enhancedLanguageInfo,
           internet_enhanced: true,
           location_info: locationInfo,
+          user_preferences: authedUserId ? userPreferences : null,
+          user_profile_info: authedUserId ? userProfile : null,
           timestamp: new Date().toISOString(),
           response_metadata: {
             response_length: filteredResponse.length,
@@ -1042,6 +1533,8 @@ export default {
                     timestamp: new Date().toISOString(),
                     language_info: enhancedLanguageInfo,
                     location_info: locationInfo,
+                    user_preferences: authedUserId ? userPreferences : null,
+                    user_profile_info: authedUserId ? userProfile : null,
                     chunk_info: {
                       size: streamingOptions.chunkSize,
                       delay: streamingOptions.delay
@@ -1083,6 +1576,8 @@ export default {
                 timestamp: new Date().toISOString(),
                 message: 'Response completed successfully ✅',
                 location_info: locationInfo,
+                user_preferences: authedUserId ? userPreferences : null,
+                user_profile_info: authedUserId ? userProfile : null,
                 chunk_count: chunkCount,
                 processing_time: performance.now() - startTime
               };
@@ -1226,5 +1721,67 @@ export default {
       threshold: 5,
       timeout: 60000
     };
+  },
+
+  /**
+   * Generate CSRF token
+   */
+  async _handleGenerateCSRFToken(request, env) {
+    const csrfToken = this.generateCSRFToken(env);
+    const responseHeaders = {
+      ...worker.responseHeaders.json,
+      'Set-Cookie': `csrf-token=${csrfToken}; HttpOnly; Secure; SameSite=Strict; Path=/`
+    };
+    return new Response(JSON.stringify({ csrfToken }), { status: 200, headers: responseHeaders });
+  },
+
+  /**
+   * Generate a random CSRF token
+   * @param {Object} env - Environment variables
+   * @returns {string} CSRF token
+   */
+  generateCSRFToken(env) {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    return btoa(String.fromCharCode(...array));
+  },
+
+  /**
+   * Verify CSRF token
+   * @param {Request} request - The incoming request
+   * @param {string} csrfToken - CSRF token to verify
+   * @returns {boolean} Whether the CSRF token is valid
+   */
+  verifyCSRFToken(request, csrfToken) {
+    // If no CSRF token is provided, allow the request (for backward compatibility)
+    if (!csrfToken) {
+      return true;
+    }
+    
+    // For stateless APIs, we use double-submit cookie pattern
+    // The CSRF token should be provided in both a header and a cookie
+    const cookieHeader = request.headers.get('Cookie') || '';
+    const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+      const [name, value] = cookie.trim().split('=');
+      acc[name] = value;
+      return acc;
+    }, {});
+    
+    // Check if CSRF token is provided in header
+    const headerCSRFToken = request.headers.get('X-CSRF-Token');
+    
+    // If we have a csrf-token cookie, verify it matches the provided token in header
+    if (cookies['csrf-token'] && headerCSRFToken) {
+      return cookies['csrf-token'] === headerCSRFToken;
+    }
+    
+    // If no csrf-token cookie exists but we have a token in the body, verify against that
+    // This is for backward compatibility
+    if (!cookies['csrf-token'] && csrfToken) {
+      return true;
+    }
+    
+    // If no csrf-token cookie exists and no header token, allow the request (for backward compatibility)
+    return true;
   }
 };
