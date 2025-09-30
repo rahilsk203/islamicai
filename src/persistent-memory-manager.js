@@ -85,6 +85,12 @@ export class PersistentMemoryManager {
   }
 
   async saveUserFact(userId, type, value, priority = 2) {
+    // For guest users, don't save facts to persistent storage
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping user fact save for guest user');
+      return null;
+    }
+    
     const profile = await this.getUserProfile(userId);
     if (!profile.keyFacts) profile.keyFacts = {};
     profile.keyFacts[type] = value;
@@ -121,6 +127,11 @@ export class PersistentMemoryManager {
   }
 
   async _getUserSemanticIndex(userId) {
+    // For guest users, return empty index
+    if (!this._isAuthenticatedUser(userId)) {
+      return [];
+    }
+    
     try {
       const now = Date.now();
       if (this.semanticIndexCache.has(userId)) {
@@ -136,6 +147,11 @@ export class PersistentMemoryManager {
   }
 
   async _setUserSemanticIndex(userId, ids) {
+    // For guest users, don't save semantic index
+    if (!this._isAuthenticatedUser(userId)) {
+      return;
+    }
+    
     try {
       await this.semanticKV.put(this._semanticUserIndexKey(userId), JSON.stringify(ids.slice(-5000)), { expirationTtl: 60 * 60 * 24 * 30 });
       this._putSemanticIndexCache(userId, ids.slice(-5000));
@@ -143,6 +159,12 @@ export class PersistentMemoryManager {
   }
 
   async _saveSemanticRecord(userId, msgId, text, metadata) {
+    // For guest users, don't save semantic records to persistent storage
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping semantic record save for guest user');
+      return;
+    }
+    
     // DSA: Skip duplicate recent texts per user (normalized hash)
     if (this._isRecentDuplicate(userId, text)) return;
     const embedding = this._computeEmbedding(text);
@@ -157,12 +179,24 @@ export class PersistentMemoryManager {
     // Skip if opted out
     const userProfile = await this.getUserProfile(userId);
     if (userProfile.optOutMemory) return;
+    
+    // For guest users, don't record turns in semantic memory
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping turn recording for guest user');
+      return;
+    }
 
     const msgId = `${sessionId}:${role}:${Date.now()}`;
     await this._saveSemanticRecord(userId, msgId, content, { kind: 'message', role, sessionId });
   }
 
   async forgetLast(userId) {
+    // For guest users, don't forget anything in semantic memory
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping forget last for guest user');
+      return false;
+    }
+    
     const ids = await this._getUserSemanticIndex(userId);
     const last = ids.pop();
     if (last) {
@@ -182,6 +216,12 @@ export class PersistentMemoryManager {
 
   // ---- Episodic summaries ----
   async addEpisodicSummary(userId, sessionId, summaryText) {
+    // For guest users, don't add episodic summaries to persistent storage
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping episodic summary for guest user');
+      return null;
+    }
+    
     const mem = this.memory.createMemory(summaryText, this.memory.memoryTypes.CONVERSATION_CONTEXT, this.memory.memoryPriority.MEDIUM, { userId, sessionId, episodic: true });
     await this._saveSemanticRecord(userId, mem.id, summaryText, { kind: 'episodic', sessionId, episodic: true });
     return mem.id;
@@ -203,6 +243,14 @@ export class PersistentMemoryManager {
 
     // Short-term: last N turns
     const shortTerm = sessionHistory.slice(-lastN);
+
+    // For guest users, don't perform long-term recall
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping long-term recall for guest user');
+      const result = { shortTerm, similar: [] };
+      this._putRecallCache(cacheKey, result);
+      return result;
+    }
 
     // Long-term + episodic via semantic similarity
     const idx = await this._getUserSemanticIndex(userId);
@@ -287,4 +335,11 @@ PersistentMemoryManager.prototype._putRecallCache = function(key, result) {
   }
 };
 
-
+// Helper method to check if a user is authenticated
+PersistentMemoryManager.prototype._isAuthenticatedUser = function(userId) {
+  // Authenticated users have a proper UUID format, guest users use session IDs
+  if (!userId) return false;
+  // Check if userId looks like a UUID (authenticated user)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(userId);
+};

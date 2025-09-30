@@ -79,14 +79,39 @@ export class D1MemoryManager {
     return new TextDecoder().decode(decryptedBuffer);
   }
 
+  // Enhanced method to ensure user exists with proper validation
   async ensureUser(userId, profile = {}) {
+    // Validate that this is an authenticated user (not a guest)
+    if (!this._isAuthenticatedUser(userId)) {
+      throw new Error('Cannot ensure user for guest sessions');
+    }
+    
+    // Validate user ID
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('Invalid user ID');
+    }
+    
     const existing = await this.db.prepare(
       'SELECT id FROM users WHERE id = ?'
     ).bind(userId).first();
+    
     if (existing) return userId;
+    
+    // Validate profile data
+    const email = profile.email || null;
+    const provider = profile.provider || 'local';
+    
+    // Validate email format if provided
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        throw new Error('Invalid email format');
+      }
+    }
+    
     await this.db.prepare(
       'INSERT INTO users (id, email, provider, created_at) VALUES (?, ?, ?, ?)' 
-    ).bind(userId, profile.email || null, profile.provider || 'local', new Date().toISOString()).run();
+    ).bind(userId, email, provider, new Date().toISOString()).run();
     
     // Create default user preferences
     await this.db.prepare(
@@ -97,6 +122,11 @@ export class D1MemoryManager {
   }
 
   async getPreferences(userId) {
+    // For guest users, return empty preferences
+    if (!this._isAuthenticatedUser(userId)) {
+      return { language: null, madhhab: null, interests: [] };
+    }
+    
     const row = await this.db.prepare(
       'SELECT language_pref, madhhab_pref, interests_json FROM user_preferences WHERE user_id = ?'
     ).bind(userId).first();
@@ -115,6 +145,12 @@ export class D1MemoryManager {
   }
 
   async setPreferences(userId, { language, madhhab, interests }) {
+    // For guest users, don't save preferences
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping preferences save for guest user');
+      return;
+    }
+    
     const existing = await this.db.prepare(
       'SELECT user_id FROM user_preferences WHERE user_id = ?'
     ).bind(userId).first();
@@ -136,6 +172,12 @@ export class D1MemoryManager {
   }
 
   async clearPreference(userId, field) {
+    // For guest users, don't clear preferences
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping preference clear for guest user');
+      return;
+    }
+    
     const allowed = new Set(['language_pref', 'madhhab_pref', 'interests_json']);
     if (!allowed.has(field)) return;
     await this.db.prepare(
@@ -144,6 +186,12 @@ export class D1MemoryManager {
   }
 
   async addDiscussionSummary(userId, sessionId, summaryText) {
+    // For guest users, don't save discussion summaries
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping discussion summary save for guest user');
+      return;
+    }
+    
     // Encrypt the summary before storing
     const encryptedSummary = await this._encryptData(summaryText);
     
@@ -153,6 +201,11 @@ export class D1MemoryManager {
   }
 
   async getRecentSummaries(userId, limit = 5) {
+    // For guest users, return empty summaries
+    if (!this._isAuthenticatedUser(userId)) {
+      return [];
+    }
+    
     const results = await this.db.prepare(
       'SELECT summary FROM discussion_summaries WHERE user_id = ? ORDER BY created_at DESC LIMIT ?'
     ).bind(userId, limit).all();
@@ -173,8 +226,22 @@ export class D1MemoryManager {
     return summaries;
   }
   
-  // New method to get user's complete memory profile
+  // Enhanced method to get user's complete memory profile with additional security
   async getUserMemoryProfile(userId) {
+    // Validate user ID format
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('Invalid user ID');
+    }
+    
+    // For guest users, return empty profile
+    if (!this._isAuthenticatedUser(userId)) {
+      return {
+        preferences: { language: null, madhhab: null, interests: [] },
+        recentSummaries: [],
+        memoryCount: 0
+      };
+    }
+    
     const preferences = await this.getPreferences(userId);
     const summaries = await this.getRecentSummaries(userId, 10);
     
@@ -187,6 +254,12 @@ export class D1MemoryManager {
   
   // New method to update user profile information
   async updateUserProfile(userId, profileData) {
+    // For guest users, don't update profile
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping profile update for guest user');
+      return;
+    }
+    
     const { name, avatarUrl } = profileData;
     const existing = await this.db.prepare(
       'SELECT user_id FROM user_profiles WHERE user_id = ?'
@@ -212,8 +285,13 @@ export class D1MemoryManager {
     ).bind(userId).run();
   }
   
-  // New method to get user profile
+  // Enhanced method to get user profile
   async getUserProfile(userId) {
+    // For guest users, return empty profile
+    if (!this._isAuthenticatedUser(userId)) {
+      return { name: null, avatarUrl: null, lastLogin: null, loginCount: 0 };
+    }
+    
     const profile = await this.db.prepare(
       'SELECT name, avatar_url, last_login, login_count FROM user_profiles WHERE user_id = ?'
     ).bind(userId).first();
@@ -236,6 +314,12 @@ export class D1MemoryManager {
   
   // Enhanced method to create memory checkpoints with periodic summarization
   async createMemoryCheckpoint(userId, sessionId, conversationHistory) {
+    // For guest users, don't create memory checkpoints
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('Skipping memory checkpoint for guest user');
+      return;
+    }
+    
     // Only create checkpoint if conversation is long enough
     if (conversationHistory.length < 10) return;
     
@@ -293,20 +377,43 @@ export class D1MemoryManager {
   
   // Method to delete all user memories (Forget Me feature)
   async deleteAllUserMemories(userId) {
-    // Delete discussion summaries
-    await this.db.prepare(
-      'DELETE FROM discussion_summaries WHERE user_id = ?'
-    ).bind(userId).run();
+    // For guest users, there's nothing to delete
+    if (!this._isAuthenticatedUser(userId)) {
+      console.log('No memories to delete for guest user');
+      return true;
+    }
     
-    // Clear user preferences
-    await this.db.prepare(
-      'UPDATE user_preferences SET language_pref = NULL, madhhab_pref = NULL, interests_json = NULL WHERE user_id = ?'
-    ).bind(userId).run();
-    
-    // Clear user profile
-    await this.db.prepare(
-      'UPDATE user_profiles SET name = NULL, avatar_url = NULL WHERE user_id = ?'
-    ).bind(userId).run();
+    try {
+      // Delete discussion summaries
+      await this.db.prepare(
+        'DELETE FROM discussion_summaries WHERE user_id = ?'
+      ).bind(userId).run();
+      
+      // Clear user preferences
+      await this.db.prepare(
+        'UPDATE user_preferences SET language_pref = NULL, madhhab_pref = NULL, interests_json = NULL WHERE user_id = ?'
+      ).bind(userId).run();
+      
+      // Clear user profile
+      await this.db.prepare(
+        'UPDATE user_profiles SET name = NULL, avatar_url = NULL WHERE user_id = ?'
+      ).bind(userId).run();
+      
+      console.log(`All memories deleted for user ${userId}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to delete memories for user ${userId}:`, error.message);
+      return false;
+    }
+  }
+  
+  // Helper method to check if a user is authenticated
+  _isAuthenticatedUser(userId) {
+    // Authenticated users have a proper UUID format, guest users use session IDs
+    if (!userId) return false;
+    // Check if userId looks like a UUID (authenticated user)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(userId);
   }
 }
 

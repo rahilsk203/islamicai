@@ -26,6 +26,17 @@ export class AuthManager {
     // Validate password strength
     if (password.length < 8) throw new Error('Password must be at least 8 characters long');
     
+    // Additional password complexity checks
+    if (!/[A-Z]/.test(password)) throw new Error('Password must contain at least one uppercase letter');
+    if (!/[a-z]/.test(password)) throw new Error('Password must contain at least one lowercase letter');
+    if (!/[0-9]/.test(password)) throw new Error('Password must contain at least one number');
+    
+    // Check for common weak passwords
+    const weakPasswords = ['password', '12345678', 'qwertyui', 'asdfghjk'];
+    if (weakPasswords.includes(password.toLowerCase())) {
+      throw new Error('Password is too common. Please choose a stronger password.');
+    }
+    
     const existing = await this.db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
     if (existing) throw new Error('Email already exists');
     const { hashB64, saltB64 } = await this._hashPassword(password);
@@ -74,6 +85,15 @@ export class AuthManager {
       throw new Error('Invalid issuer');
     }
     
+    // Check that token was issued recently
+    if (payload.iat && payload.iat < now - (60 * 60 * 24 * 7)) { // Max 7 days old
+      throw new Error('Token is too old');
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(payload.email)) throw new Error('Invalid email format in token');
+    
     const email = payload.email;
     let user = await this.db.prepare('SELECT id FROM users WHERE email = ? AND provider = ?').bind(email, 'google').first();
     if (!user) {
@@ -89,8 +109,36 @@ export class AuthManager {
   }
   
   async getUserProfile(userId) {
+    // Validate user ID
+    if (!userId || typeof userId !== 'string') {
+      throw new Error('Invalid user ID');
+    }
+    
+    // Validate user ID format (should be a UUID for authenticated users)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      throw new Error('Invalid user ID format');
+    }
+    
     const user = await this.db.prepare('SELECT id, email, provider, created_at FROM users WHERE id = ?').bind(userId).first();
     return user;
+  }
+  
+  // Method to validate that a user exists and is properly authenticated
+  async validateUser(userId) {
+    // Validate user ID format
+    if (!userId || typeof userId !== 'string') {
+      return false;
+    }
+    
+    // Validate user ID format (should be a UUID for authenticated users)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      return false;
+    }
+    
+    const user = await this.db.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first();
+    return !!user;
   }
 }
 

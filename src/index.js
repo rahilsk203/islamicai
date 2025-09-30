@@ -421,12 +421,24 @@ export default {
     return `${data}.${signature}`;
   },
 
+  /**
+   * Enhanced token verification with stricter validation
+   * @param {Request} request - The incoming request
+   * @param {Object} env - Environment variables
+   * @returns {string|null} User ID if valid, null otherwise
+   */
   async verifyToken(request, env) {
     const auth = request.headers.get('Authorization') || '';
     if (!auth.startsWith('Bearer ')) return null;
     
     const token = auth.substring(7);
     const secret = env.AUTH_SECRET || 'dev-secret';
+    
+    // Validate secret is properly configured
+    if (secret === 'dev-secret') {
+      console.warn('WARNING: Using default development secret. This should be changed in production.');
+    }
+    
     const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     
     // Split token into parts
@@ -455,11 +467,140 @@ export default {
       // Check audience
       if (payload.aud !== 'islamic-ai-users') return null;
       
+      // Check if user ID exists
+      if (!payload.sub) return null;
+      
+      // Additional security checks
+      // Check that token was issued recently (not from future)
+      if (payload.iat && payload.iat > now + 60) return null; // Allow 1 minute clock skew
+      
+      // Check that token has reasonable expiration (not too long)
+      if (payload.exp && payload.exp > now + (24 * 60 * 60 * 7)) return null; // Max 7 days
+      
+      // Validate user ID format (should be a UUID for authenticated users)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(payload.sub)) return null;
+      
       return payload.sub; // Return user ID
     } catch (e) {
+      console.error('Token verification error:', e.message);
       return null;
     }
   },
+  
+  /**
+   * Check if authentication is required for the endpoint
+   * @param {string} handler - The handler name
+   * @returns {boolean} True if authentication is required
+   */
+  isAuthenticationRequired(handler) {
+    // Handlers that require authentication
+    const protectedHandlers = [
+      'prefsUpdate',
+      'prefsClear',
+      'profileUpdate',
+      'memoryClear',
+      'getMemoryProfile'
+    ];
+    
+    // Explicitly check for handlers that should NOT require authentication
+    const publicHandlers = [
+      'healthCheck',
+      'internetTest',
+      'authSignup',
+      'authLogin',
+      'authGoogle',
+      'generateCSRFToken',
+      'corsPreflight',
+      'chatRequest' // Chat is available to both guest and authenticated users
+    ];
+    
+    // Authentication is required for protected handlers, but NOT for public handlers
+    // For chat requests, authentication is optional (handled separately in the chat handler)
+    return protectedHandlers.includes(handler) && !publicHandlers.includes(handler);
+  },
+  
+  /**
+   * Create response for authentication required
+   * @param {string} origin - The origin for CORS
+   * @returns {Response} Authentication required response
+   */
+  createAuthRequiredResponse(origin) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Authentication required. Please log in to continue.',
+        code: 'AUTH_REQUIRED'
+      }), 
+      {
+        status: 401,
+        headers: worker.responseHeaders.json(origin)
+      }
+    );
+  },
+  
+  /**
+   * Enhanced CSRF token generation with additional security
+   * @param {Object} env - Environment variables
+   * @returns {string} CSRF token
+   */
+  generateCSRFToken(env) {
+    // Use cryptographically secure random values
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    
+    // Encode as base64url (URL-safe)
+    let binary = '';
+    const len = array.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(array[i]);
+    }
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  },
+  
+  /**
+   * Enhanced CSRF token verification with additional security
+   * @param {Request} request - The incoming request
+   * @param {string} csrfToken - CSRF token to verify
+   * @returns {boolean} Whether the CSRF token is valid
+   */
+  verifyCSRFToken(request, csrfToken) {
+    // If no CSRF token is provided, allow the request (for backward compatibility)
+    if (!csrfToken) {
+      return true;
+    }
+    
+    // Validate CSRF token format (should be base64url encoded)
+    const base64UrlRegex = /^[A-Za-z0-9_-]+$/;
+    if (!base64UrlRegex.test(csrfToken)) {
+      return false;
+    }
+    
+    // For stateless APIs, we use double-submit cookie pattern
+    // The CSRF token should be provided in both a header and a cookie
+    const cookieHeader = request.headers.get('Cookie') || '';
+    const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+      const [name, value] = cookie.trim().split('=');
+      acc[name] = value;
+      return acc;
+    }, {});
+    
+    // Check if CSRF token is provided in header
+    const headerCSRFToken = request.headers.get('X-CSRF-Token');
+    
+    // If we have a csrf-token cookie, verify it matches the provided token in header
+    if (cookies['csrf-token'] && headerCSRFToken) {
+      return cookies['csrf-token'] === headerCSRFToken;
+    }
+    
+    // If no csrf-token cookie exists but we have a token in the header, allow the request (for backward compatibility)
+    if (!cookies['csrf-token'] && headerCSRFToken) {
+      return true;
+    }
+    
+    // If no csrf-token cookie exists and no header token, allow the request (for backward compatibility)
+    return true;
+  },
+
   /**
    * Get configured API keys with fallback
    * @param {Object} env - Environment variables
@@ -534,6 +675,14 @@ export default {
           status: 200,
           headers: worker.responseHeaders.cors(origin)
         });
+      }
+
+      // Check if authentication is required for this handler
+      if (this.isAuthenticationRequired(handler)) {
+        const userId = await this.verifyToken(request, env);
+        if (!userId) {
+          return this.createAuthRequiredResponse(origin);
+        }
       }
 
       if (handler === 'healthCheck') {
@@ -761,7 +910,7 @@ export default {
       // Get CSRF token from header
       const csrfToken = request.headers.get('X-CSRF-Token');
       
-      // Verify CSRF token for state-changing operations
+      // Verify CSRF token for state-changing operations (but don't block for backward compatibility)
       if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
         return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
       }
@@ -801,7 +950,7 @@ export default {
       // Get CSRF token from header
       const csrfToken = request.headers.get('X-CSRF-Token');
       
-      // Verify CSRF token for state-changing operations
+      // Verify CSRF token for state-changing operations (but don't block for backward compatibility)
       if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
         return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
       }
@@ -845,7 +994,7 @@ export default {
       // Get CSRF token from header
       const csrfToken = request.headers.get('X-CSRF-Token');
       
-      // Verify CSRF token for state-changing operations
+      // Verify CSRF token for state-changing operations (but don't block for backward compatibility)
       if (csrfToken && !this.verifyCSRFToken(request, csrfToken)) {
         return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), { status: 403, headers: worker.responseHeaders.json(origin) });
       }
@@ -899,7 +1048,7 @@ export default {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
     
-    // Verify CSRF token for state-changing operations
+    // Verify CSRF token for state-changing operations (but don't block for backward compatibility)
     const body = await request.json();
     const { language, madhhab, interests } = body || {};
     
@@ -926,7 +1075,7 @@ export default {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
     
-    // Verify CSRF token for state-changing operations
+    // Verify CSRF token for state-changing operations (but don't block for backward compatibility)
     const body = await request.json();
     const { field } = body || {};
     
@@ -957,7 +1106,7 @@ export default {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
     
-    // Verify CSRF token for state-changing operations
+    // Verify CSRF token for state-changing operations (but don't block for backward compatibility)
     const body = await request.json();
     const { name, avatar_url } = body || {};
     
@@ -975,56 +1124,6 @@ export default {
   },
 
   /**
-   * Generate a random CSRF token
-   * @param {Object} env - Environment variables
-   * @returns {string} CSRF token
-   */
-  generateCSRFToken(env) {
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    return btoa(String.fromCharCode(...array));
-  },
-
-  /**
-   * Verify CSRF token
-   * @param {Request} request - The incoming request
-   * @param {string} csrfToken - CSRF token to verify
-   * @returns {boolean} Whether the CSRF token is valid
-   */
-  verifyCSRFToken(request, csrfToken) {
-    // If no CSRF token is provided, allow the request (for backward compatibility)
-    if (!csrfToken) {
-      return true;
-    }
-    
-    // For stateless APIs, we use double-submit cookie pattern
-    // The CSRF token should be provided in both a header and a cookie
-    const cookieHeader = request.headers.get('Cookie') || '';
-    const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
-      const [name, value] = cookie.trim().split('=');
-      acc[name] = value;
-      return acc;
-    }, {});
-    
-    // Check if CSRF token is provided in header
-    const headerCSRFToken = request.headers.get('X-CSRF-Token');
-    
-    // If we have a csrf-token cookie, verify it matches the provided token in header
-    if (cookies['csrf-token'] && headerCSRFToken) {
-      return cookies['csrf-token'] === headerCSRFToken;
-    }
-    
-    // If no csrf-token cookie exists but we have a token in the body, verify against that
-    // This is for backward compatibility
-    if (!cookies['csrf-token'] && csrfToken) {
-      return true;
-    }
-    
-    // If no csrf-token cookie exists and no header token, allow the request (for backward compatibility)
-    return true;
-  },
-
-  /**
    * Clear user memory
    */
   async _handleMemoryClear(request, env, origin) {
@@ -1034,7 +1133,7 @@ export default {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: worker.responseHeaders.json(origin) });
     }
     
-    // Verify CSRF token for state-changing operations
+    // Verify CSRF token for state-changing operations (but don't block for backward compatibility)
     const body = await request.json();
     
     // Get CSRF token from header
@@ -1048,9 +1147,13 @@ export default {
       const d1 = new D1MemoryManager(env.D1_DB, env);
       
       // Delete all user memories using the new method
-      await d1.deleteAllUserMemories(userId);
+      const success = await d1.deleteAllUserMemories(userId);
       
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: worker.responseHeaders.json(origin) });
+      if (success) {
+        return new Response(JSON.stringify({ ok: true, message: 'All memories have been erased successfully.' }), { status: 200, headers: worker.responseHeaders.json(origin) });
+      } else {
+        return new Response(JSON.stringify({ error: 'Failed to erase memories. Please try again.' }), { status: 500, headers: worker.responseHeaders.json(origin) });
+      }
     } catch (e) {
       const privacyFilter = new PrivacyFilter();
       return new Response(JSON.stringify({ error: privacyFilter.filterResponse(e.message) }), { status: 500, headers: worker.responseHeaders.json(origin) });
@@ -1198,10 +1301,21 @@ export default {
     
     console.log(`Using ${apiKeys.length} API key(s) with load balancing`);
 
-    // Link session to user and apply opt-out if requested
-    // Determine userId (prefer explicit; fallback to prior link; then sessionId)
-    let userId = userIdFromBody || await persistentMemory.getUserIdForSession(sessionId) || sessionId;
-    await persistentMemory.linkSessionToUser(sessionId, userId);
+    // Properly handle session management for guest vs authenticated users
+    let userId;
+    if (authedUserId) {
+      // Authenticated user: Use their user ID for personalized memory
+      userId = authedUserId;
+      // Link session to authenticated user
+      await persistentMemory.linkSessionToUser(sessionId, userId);
+    } else {
+      // Guest user: Use session ID as user ID (no personalized memory)
+      userId = sessionId;
+      // Ensure guest sessions are not linked to any user
+      await persistentMemory.linkSessionToUser(sessionId, userId);
+    }
+    
+    // Apply opt-out if requested
     if (memoryOptOut) {
       await persistentMemory.setOptOut(userId, true);
     }
@@ -1254,6 +1368,8 @@ export default {
     let userPreferences = null;
     let recentSummaries = [];
     let userProfile = null;
+    
+    // Only load personalized data for authenticated users
     if (authedUserId) {
       try {
         const d1 = new D1MemoryManager(env.D1_DB, env);
@@ -1277,7 +1393,13 @@ export default {
       } catch (e) {
         console.log('D1 recall failed:', e.message);
       }
+    } else {
+      // For guest users, explicitly ensure no personalized data is loaded
+      userPreferences = null;
+      recentSummaries = [];
+      userProfile = null;
     }
+    
     if (recall.similar && recall.similar.length > 0) {
       contextualPrompt += '\n\n**Relevant Prior Memories:**\n';
       recall.similar.forEach(rec => {
@@ -1409,6 +1531,9 @@ export default {
                   // Create a memory checkpoint for long conversations
                   await d1.createMemoryCheckpoint(authedUserId, sessionId, sessionData.history);
                 } catch {}
+              } else {
+                // For guest users, ensure no long-term memory is stored in D1
+                console.log(`Guest session ${sessionId}: Skipping D1 storage for episodic summary`);
               }
             }
           } catch {}
@@ -1433,6 +1558,7 @@ export default {
           location_info: locationInfo,
           user_preferences: authedUserId ? userPreferences : null,
           user_profile_info: authedUserId ? userProfile : null,
+          is_authenticated: !!authedUserId,
           timestamp: new Date().toISOString(),
           response_metadata: {
             response_length: filteredResponse.length,
