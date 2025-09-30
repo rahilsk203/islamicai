@@ -98,7 +98,7 @@ Enhanced to:
 
 ## Security Considerations
 
-1. Passwords are securely hashed using PBKDF2 with 310,000 iterations
+1. Passwords are securely hashed using PBKDF2 with 100,000 iterations
 2. Authentication tokens use HMAC signing for verification
 3. Google ID tokens are validated for audience and basic payload structure
 4. All sensitive data is filtered before being sent to AI or client
