@@ -642,9 +642,10 @@ export class ContextIntegrator {
    * @param {string} currentMessage - Current user message
    * @param {Array} pastContext - Array of past context items
    * @param {Object} analysisResults - Results from contextual analysis
+   * @param {Object} languagePreferences - User's language preferences
    * @returns {Object} Integrated context with prioritization
    */
-  integrateContext(currentMessage, pastContext, analysisResults) {
+  integrateContext(currentMessage, pastContext, analysisResults, languagePreferences = null) {
     const integratedContext = {
       currentMessage,
       prioritizedContext: [],
@@ -710,7 +711,8 @@ export class ContextIntegrator {
     integratedContext.integratedPrompt = this._buildIntegratedPrompt(
       integratedContext.prioritizedContext,
       integratedContext.integrationStrategy,
-      weightedContext
+      weightedContext,
+      languagePreferences
     );
     
     return integratedContext;
@@ -739,10 +741,11 @@ export class ContextIntegrator {
    * @param {Array} prioritizedContext - Array of prioritized context items
    * @param {string} strategy - Integration strategy used
    * @param {Object} weightedContext - Weighted context information
+   * @param {Object} languagePreferences - User's language preferences
    * @returns {string} Integrated prompt
    * @private
    */
-  _buildIntegratedPrompt(prioritizedContext, strategy, weightedContext) {
+  _buildIntegratedPrompt(prioritizedContext, strategy, weightedContext, languagePreferences = null) {
     // Sort by priority (highest first)
     const sortedContext = [...prioritizedContext].sort((a, b) => b.priority - a.priority);
     
@@ -792,6 +795,31 @@ export class ContextIntegrator {
     
     prompt += '3. AVOID: Do not summarize or repeat information from past context unless specifically requested\n';
     prompt += `4. PRIORITY: Current message takes ${(weightedContext.currentMessage.weight * 100).toFixed(1)}% priority, past context takes ${(weightedContext.overallWeights.pastContext * 100).toFixed(1)}% maximum\n`;
+    
+    // Add language preference instructions if available
+    if (languagePreferences && languagePreferences.user_preference) {
+      const userLanguage = languagePreferences.user_preference;
+      prompt += `5. LANGUAGE PREFERENCE: Respond in ${userLanguage} as specified in the user's profile.\n`;
+      
+      // Add contextual connection information
+      if (languagePreferences.learning_data && languagePreferences.learning_data.connectionType) {
+        const connectionType = languagePreferences.learning_data.connectionType;
+        switch (connectionType) {
+          case 'direct_response':
+            prompt += '6. CONTEXTUAL CONNECTION: This is a direct response to the previous message. Maintain consistency in tone and language.\n';
+            break;
+          case 'topic_continuation':
+            prompt += '6. CONTEXTUAL CONNECTION: This continues the ongoing topic. Build upon previous discussion points.\n';
+            break;
+          case 'content_reference':
+            prompt += '6. CONTEXTUAL CONNECTION: This references previous content. Ensure coherence with earlier explanations.\n';
+            break;
+          case 'contextual_consistency':
+            prompt += '6. CONTEXTUAL CONNECTION: Maintain contextual consistency with the ongoing conversation flow.\n';
+            break;
+        }
+      }
+    }
     
     return prompt;
   }

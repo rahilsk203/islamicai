@@ -1259,6 +1259,9 @@ export default {
     };
     const languageInfo = body.language_info || {};
     
+    // Get user's language preference from request body if provided
+    const userLanguagePreference = body.user_language || null;
+    
     // Get default streaming options and allow override
     const defaultStreamingOptions = this.getDefaultStreamingOptions(env);
     const requestStreamingOptions = body.streaming_options || {};
@@ -1337,7 +1340,8 @@ export default {
     const languageAdaptation = adaptiveLanguageSystem.adaptLanguage(userMessage, sessionId, {
       previousMessages: await sessionManager.getRecentMessages(sessionId, 5),
       userProfile: await sessionManager.getUserProfile(sessionId),
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      userLanguagePreference: userLanguagePreference // Pass user's language preference
     });
 
     // Check for commands
@@ -1362,7 +1366,8 @@ export default {
     // Only integrate past context when there's contextual or logical connection
     let contextualPrompt = islamicPrompt.getContextIntegratedPrompt(
       userMessage,
-      sessionData.history || [] // Past context from session history
+      sessionData.history || [], // Past context from session history
+      languageAdaptation // Pass language preferences
     );
 
     // Hybrid recall: short-term (already in contextualPromptBase) + semantic similar long-term
@@ -1387,13 +1392,16 @@ export default {
         recentSummaries = await d1.getRecentSummaries(authedUserId, 3);
         userProfile = await d1.getUserProfile(authedUserId);
         
-        if (userPreferences.language) {
-          contextualPrompt += `\n\nUser language preference: ${userPreferences.language}.`;
+        // Use user's language preference from request body if provided, otherwise use stored preference
+        const effectiveLanguage = userLanguagePreference || (userPreferences ? userPreferences.language : null);
+        
+        if (effectiveLanguage) {
+          contextualPrompt += `\n\nUser language preference: ${effectiveLanguage}.`;
         }
-        if (userPreferences.madhhab) {
+        if (userPreferences && userPreferences.madhhab) {
           contextualPrompt += `\nMadhhab preference: ${userPreferences.madhhab}.`;
         }
-        if (userPreferences.interests && userPreferences.interests.length) {
+        if (userPreferences && userPreferences.interests && userPreferences.interests.length) {
           contextualPrompt += `\nInterests: ${userPreferences.interests.join(', ')}.`;
         }
         if (recentSummaries.length) {
@@ -1407,6 +1415,11 @@ export default {
       userPreferences = null;
       recentSummaries = [];
       userProfile = null;
+      
+      // Even for guest users, use language preference from request body if provided
+      if (userLanguagePreference) {
+        contextualPrompt += `\n\nUser language preference: ${userLanguagePreference}.`;
+      }
     }
     
     if (recall.similar && recall.similar.length > 0) {
@@ -1431,6 +1444,24 @@ export default {
       ),
       response_prefs: brevityPrefs
     };
+
+    // Enhance contextual prompt with better connection information
+    if (languageAdaptation.learningData && languageAdaptation.learningData.connectionType) {
+      switch (languageAdaptation.learningData.connectionType) {
+        case 'direct_response':
+          contextualPrompt += '\n\n**Conversation Context**: This is a direct response to the previous message. Maintain consistency in tone and language.';
+          break;
+        case 'topic_continuation':
+          contextualPrompt += '\n\n**Conversation Context**: This continues the ongoing topic. Build upon previous discussion points.';
+          break;
+        case 'content_reference':
+          contextualPrompt += '\n\n**Conversation Context**: This references previous content. Ensure coherence with earlier explanations.';
+          break;
+        case 'contextual_consistency':
+          contextualPrompt += '\n\n**Conversation Context**: Maintain contextual consistency with the ongoing conversation flow.';
+          break;
+      }
+    }
 
     try {
       // Get location information early for context

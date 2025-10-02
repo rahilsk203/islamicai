@@ -670,9 +670,10 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
    * Get context-integrated prompt with intelligent prioritization
    * @param {string} currentMessage - Current user message
    * @param {Array} pastContext - Array of past context items
+   * @param {Object} languagePreferences - User's language preferences
    * @returns {string} Integrated prompt with prioritization
    */
-  getContextIntegratedPrompt(currentMessage, pastContext = []) {
+  getContextIntegratedPrompt(currentMessage, pastContext = [], languagePreferences = null) {
     // Analyze contextual connections
     const analysisResults = this.contextIntegrator.analyzeContextualConnections(
       currentMessage, 
@@ -683,7 +684,8 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
     const integratedContext = this.contextIntegrator.integrateContext(
       currentMessage, 
       pastContext, 
-      analysisResults
+      analysisResults,
+      languagePreferences
     );
     
     // Build base prompt
