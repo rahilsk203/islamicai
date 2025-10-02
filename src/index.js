@@ -1,3 +1,4 @@
+import { IslamicPrompt } from './islamic-prompt.js';
 import { GeminiAPI } from './gemini-api.js';
 import { MultiKVSessionManager } from './multi-kv-session-manager.js';
 import { CommandHandler } from './command-handler.js';
@@ -1218,7 +1219,7 @@ export default {
   },
 
   /**
-   * Handle chat request with optimizations
+   * Handle chat request with DSA-based intelligent context integration
    * @private
    */
   async _handleChatRequest(request, env, ctx, origin) {
@@ -1294,6 +1295,7 @@ export default {
     const commandHandler = new CommandHandler();
     const adaptiveLanguageSystem = new AdaptiveLanguageSystem();
     const privacyFilter = new PrivacyFilter(); // Add privacy filter
+    const islamicPrompt = new IslamicPrompt(); // Initialize IslamicPrompt for context integration
     
     // Use multiple API keys with load balancing
     const apiKeys = this.getAPIKeys(env);
@@ -1352,8 +1354,16 @@ export default {
       });
     }
 
-    // Get contextual prompt with memory
-    const contextualPromptBase = await sessionManager.getContextualPrompt(sessionId, userMessage);
+    // Get session data for context analysis
+    const sessionData = await sessionManager.getSessionData(sessionId);
+    
+    // DSA-based intelligent context integration
+    // Prioritize responding based on the user's current message
+    // Only integrate past context when there's contextual or logical connection
+    let contextualPrompt = islamicPrompt.getContextIntegratedPrompt(
+      userMessage,
+      sessionData.history || [] // Past context from session history
+    );
 
     // Hybrid recall: short-term (already in contextualPromptBase) + semantic similar long-term
     // Fetch full session history to drive recall
@@ -1363,7 +1373,6 @@ export default {
       topK: 5
     });
 
-    let contextualPrompt = contextualPromptBase;
     // D1-backed long-term preferences and summaries for authenticated users
     let userPreferences = null;
     let recentSummaries = [];

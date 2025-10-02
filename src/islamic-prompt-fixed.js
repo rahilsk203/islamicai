@@ -212,12 +212,12 @@ export class IslamicGreetingSystem {
    */
   getGreetingBlessing(language) {
     const blessings = {
-      'english': "pliant May Allah bless our conversation with knowledge, wisdom, and guidance.",
-      'hindi': "pliant अल्लाह हमारी बातचीत को ज्ञान, बुद्धि और मार्गदर्शन से नवाज़े।",
-      'urdu': "pliant اللہ ہماری بات چیت کو علم، حکمت اور ہدایت سے نوازے۔",
-      'persian': "pliant خداوند گفتگوی ما را با دانش، حکمت و هدایت برکت دهد.",
-      'bengali': "pliant আল্লাহ আমাদের কথোপকথনকে জ্ঞান, প্রজ্ঞা এবং পথনির্দেশনার সাথে ধন্য করুন।",
-      'hinglish': "pliant Allah humari baat ko ilm, hikmat aur guidance se nawaaze."
+      'english': "🤲 May Allah bless our conversation with knowledge, wisdom, and guidance.",
+      'hindi': "🤲 अल्लाह हमारी बातचीत को ज्ञान, बुद्धि और मार्गदर्शन से नवाज़े।",
+      'urdu': "🤲 اللہ ہماری بات چیت کو علم، حکمت اور ہدایت سے نوازے۔",
+      'persian': "🤲 خداوند گفتگوی ما را با دانش، حکمت و هدایت برکت دهد.",
+      'bengali': "🤲 আল্লাহ আমাদের কথোপকথনকে জ্ঞান, প্রজ্ঞা এবং পথনির্দেশনার সাথে ধন্য করুন।",
+      'hinglish': "🤲 Allah humari baat ko ilm, hikmat aur guidance se nawaaze."
     };
     
     return blessings[language] || blessings['english'];
@@ -595,7 +595,7 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
    * @returns {Object} Performance metrics
    */
   getPerformanceMetrics() {
-    const baseMetrics = {
+    return {
       ...this.performanceMetrics,
       cacheHitRate: this.performanceMetrics.cacheHits / 
         (this.performanceMetrics.cacheHits + this.performanceMetrics.cacheMisses) * 100,
@@ -603,18 +603,6 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
         Math.max(this.performanceMetrics.totalRequests, 1),
       averageValidationTime: this.performanceMetrics.validationTime / 
         Math.max(this.performanceMetrics.totalRequests, 1)
-    };
-    
-    // Add context integration metrics
-    const contextMetrics = this.contextIntegrator.getCacheStats();
-    
-    return {
-      ...baseMetrics,
-      contextIntegration: {
-        cacheSize: contextMetrics.size,
-        cacheMaxSize: contextMetrics.maxSize,
-        cacheTTL: contextMetrics.ttl
-      }
     };
   }
 
@@ -696,6 +684,34 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
     prompt += this.getUniversalQuranInclusionInstruction();
     
     return prompt;
+  }
+
+  /**
+   * Get performance metrics including context integration stats
+   * @returns {Object} Performance metrics
+   */
+  getPerformanceMetrics() {
+    const baseMetrics = {
+      ...this.performanceMetrics,
+      cacheHitRate: this.performanceMetrics.cacheHits / 
+        (this.performanceMetrics.cacheHits + this.performanceMetrics.cacheMisses) * 100,
+      averageClassificationTime: this.performanceMetrics.classificationTime / 
+        Math.max(this.performanceMetrics.totalRequests, 1),
+      averageValidationTime: this.performanceMetrics.validationTime / 
+        Math.max(this.performanceMetrics.totalRequests, 1)
+    };
+    
+    // Add context integration metrics
+    const contextMetrics = this.contextIntegrator.getCacheStats();
+    
+    return {
+      ...baseMetrics,
+      contextIntegration: {
+        cacheSize: contextMetrics.size,
+        cacheMaxSize: contextMetrics.maxSize,
+        cacheTTL: contextMetrics.ttl
+      }
+    };
   }
 
   /**
