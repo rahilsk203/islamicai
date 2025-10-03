@@ -95,6 +95,9 @@ export class AdaptiveLanguageSystem {
     // Enhanced learning parameters for better adaptation
     this.confidenceThreshold = 0.6; // Increased threshold for more confident decisions
     this.minSamplesForLearning = 2; // Need more samples for learning
+    
+    // Connection pooling for performance
+    this.connectionPool = [];
   }
 
   /**

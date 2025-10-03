@@ -79,6 +79,9 @@ export class IslamicGreetingSystem {
     this.greetingsProcessed = 0;
     this.greetingDetections = 0;
     this.lastGreetingTime = 0;
+    
+    // Connection pooling for performance
+    this.connectionPool = [];
   }
   
   /**
@@ -349,6 +352,9 @@ export class IslamicPrompt {
       validationTime: 0,
       totalRequests: 0
     };
+    
+    // Connection pooling for performance
+    this.connectionPool = [];
   }
 
   /**

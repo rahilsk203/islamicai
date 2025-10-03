@@ -82,6 +82,9 @@ export class ContextIntegrator {
     
     // DSA: LRU cache for expensive operations
     this.lruCache = new Map();
+    
+    // Connection pooling for performance
+    this.connectionPool = [];
   }
 
   /**

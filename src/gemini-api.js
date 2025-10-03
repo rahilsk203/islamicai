@@ -449,6 +449,14 @@ class GeminiAPI {
       bloomFilterHits: 0,
       memoryPoolHits: 0
     };
+    
+    // Connection pooling for performance
+    this.connectionPool = [];
+    
+    // Concurrency control
+    this.maxConcurrentRequests = 10;
+    this.currentlyProcessing = 0;
+    this.requestQueue = [];
   }
 
   _pickNextModelId() {

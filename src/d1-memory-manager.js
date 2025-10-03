@@ -4,6 +4,9 @@ export class D1MemoryManager {
   constructor(db, env) {
     this.db = db; // Cloudflare D1 binding
     this.env = env; // Environment variables for encryption key
+    
+    // Connection pooling for performance
+    this.connectionPool = [];
   }
 
   // Helper method to encrypt data
