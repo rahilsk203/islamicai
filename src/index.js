@@ -38,11 +38,6 @@ class OptimizedIslamicAIWorker {
       threshold: 5,
       timeout: 60000 // 1 minute
     };
-    
-    // Request queue for handling concurrent requests
-    this.requestQueue = [];
-    this.maxConcurrentRequests = 10;
-    this.currentlyProcessing = 0;
   }
 
   /**
@@ -99,17 +94,10 @@ class OptimizedIslamicAIWorker {
         'Access-Control-Allow-Credentials': 'true'
       })
     };
-    
-    // Connection pooling for database and API connections
-    this.connectionPool = {
-      d1Connections: [],
-      geminiConnections: [],
-      kvConnections: []
-    };
   }
 
   /**
-   * Build Trie-based request router for O(k) complexity
+   * Build Trie-based request router for O(k) path matching
    * @private
    * @returns {Object} Trie structure for request routing
    */
@@ -329,42 +317,6 @@ class OptimizedIslamicAIWorker {
   }
 
   /**
-   * Queue request for processing to handle concurrency
-   * @private
-   * @param {Function} handler - Request handler function
-   * @returns {Promise} Handler result
-   */
-  async _queueRequest(handler) {
-    return new Promise((resolve, reject) => {
-      this.requestQueue.push({ handler, resolve, reject });
-      this._processQueue();
-    });
-  }
-
-  /**
-   * Process request queue with concurrency control
-   * @private
-   */
-  async _processQueue() {
-    if (this.currentlyProcessing >= this.maxConcurrentRequests || this.requestQueue.length === 0) {
-      return;
-    }
-
-    this.currentlyProcessing++;
-    const { handler, resolve, reject } = this.requestQueue.shift();
-
-    try {
-      const result = await handler();
-      resolve(result);
-    } catch (error) {
-      reject(error);
-    } finally {
-      this.currentlyProcessing--;
-      this._processQueue(); // Process next request
-    }
-  }
-
-  /**
    * Get performance metrics
    * @returns {Object} Performance metrics
    */
@@ -375,9 +327,7 @@ class OptimizedIslamicAIWorker {
         (this.performanceMetrics.cacheHits + this.performanceMetrics.cacheMisses) * 100,
       averageResponseTime: this.performanceMetrics.averageResponseTime / 
         Math.max(this.performanceMetrics.totalRequests, 1),
-      circuitBreakerState: this.circuitBreaker.state,
-      queueLength: this.requestQueue.length,
-      currentlyProcessing: this.currentlyProcessing
+      circuitBreakerState: this.circuitBreaker.state
     };
   }
 
@@ -781,8 +731,7 @@ export default {
       }
 
       if (handler === 'chatRequest') {
-        // Queue chat requests for concurrent processing
-        return await worker._queueRequest(() => this._handleChatRequest(request, env, ctx, origin));
+        return await this._handleChatRequest(request, env, ctx, origin);
       }
 
       // Method not allowed
@@ -1688,5 +1637,72 @@ export default {
         headers: worker.responseHeaders.json(origin),
       });
     }
+  },
+
+  /**
+   * Handle streaming response with DSA-level optimizations
+   * @private
+   */
+  async handleStreamingResponse(
+    geminiAPI, 
+    sessionId, 
+    userMessage, 
+    contextualPrompt, 
+    enhancedLanguageInfo, 
+    streamingOptions,
+    sessionManager,
+    userIP,
+    locationInfo,
+    privacyFilter,
+    origin
+  ) {
+    try {
+      // Process internet data if needed
+      const internetData = await geminiAPI.internetProcessor.processQuery(userMessage, {
+        sessionId,
+        languageInfo: enhancedLanguageInfo,
+        contextualPrompt
+      }, userIP);
+
+      // Call Gemini API with streaming response, now including location context
+      const geminiResponse = await geminiAPI.generateResponse(
+        [], 
+        sessionId, 
+        userMessage, 
+        contextualPrompt, 
+        enhancedLanguageInfo, 
+        streamingOptions,
+        userIP,
+        locationInfo // Pass location info to Gemini API
+      );
+
+      // For streaming responses, we don't filter until the end
+      // The privacy filtering will be applied to chunks as they're sent
+
+      // Return streaming response with proper headers
+      return new Response(geminiResponse, {
+        status: 200,
+        headers: worker.responseHeaders.stream(origin)
+      });
+    } catch (error) {
+      console.error('Error generating streaming response:', error);
+      
+      // Use privacy filter for error messages
+      const safeErrorMessage = privacyFilter.filterResponse(error.message);
+      
+      // Return error response
+      const errorResponse = {
+        session_id: sessionId,
+        reply: "Sorry, I'm having trouble processing your request right now. Please try again.",
+        error: safeErrorMessage,
+        streaming: true
+      };
+
+      return new Response(JSON.stringify(errorResponse), {
+        status: 200,
+        headers: worker.responseHeaders.json(origin)
+      });
+    }
   }
+
 };

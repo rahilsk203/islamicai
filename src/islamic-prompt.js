@@ -79,9 +79,6 @@ export class IslamicGreetingSystem {
     this.greetingsProcessed = 0;
     this.greetingDetections = 0;
     this.lastGreetingTime = 0;
-    
-    // Connection pooling for performance
-    this.connectionPool = [];
   }
   
   /**
@@ -285,7 +282,8 @@ export class IslamicPrompt {
     this.greetingSystem = new IslamicGreetingSystem();
     
     // Initialize context integrator for DSA-based intelligent integration
-    this.contextIntegrator = new ContextIntegrator();
+    // Pass this instance to avoid circular dependency
+    this.contextIntegrator = new ContextIntegrator(this);
     
     // Embedded prompt data since we can't read from file system in Cloudflare Workers
     this.promptData = {
@@ -352,9 +350,6 @@ export class IslamicPrompt {
       validationTime: 0,
       totalRequests: 0
     };
-    
-    // Connection pooling for performance
-    this.connectionPool = [];
   }
 
   /**
@@ -422,6 +417,50 @@ export class IslamicPrompt {
       'how to', 'what should', 'advice', 'guidance', 'help', 'problem', 'difficulty',
       'struggle', 'challenge', 'decision', 'choice', 'right path', 'wisdom'
     ]);
+    
+    // Enhanced Islamic topic classification for deeper understanding
+    this.islamicTopicClassification = {
+      'quranic_studies': {
+        keywords: ['quran', 'surah', 'ayah', 'verse', 'recitation', 'tilawah', 'revelation', 'qur\'an'],
+        weight: 1.0
+      },
+      'hadith_studies': {
+        keywords: ['hadith', 'sunnah', 'prophet', 'sahih', 'narration', 'authentic', 'bukhari', 'muslim'],
+        weight: 1.0
+      },
+      'fiqh_jurisprudence': {
+        keywords: ['fiqh', 'halal', 'haram', 'ruling', 'judgment', 'legal', 'madhhab', 'hanafi', 'shafi', 'maliki', 'hanbali'],
+        weight: 1.0
+      },
+      'seerah_history': {
+        keywords: ['seerah', 'history', 'battle', 'migration', 'hijrah', 'companions', 'khilafah', 'caliph'],
+        weight: 0.9
+      },
+      'spiritual_development': {
+        keywords: ['iman', 'faith', 'taqwa', 'repentance', 'dua', 'supplication', 'dhikr', 'remembrance'],
+        weight: 0.9
+      },
+      'daily_practice': {
+        keywords: ['prayer', 'namaz', 'wudu', 'fasting', 'roza', 'zakat', 'hajj', 'pilgrimage'],
+        weight: 1.0
+      },
+      'ethics_morality': {
+        keywords: ['ethics', 'morals', 'character', 'adab', 'manners', 'virtue', 'patience', 'gratitude'],
+        weight: 0.8
+      },
+      'contemporary_issues': {
+        keywords: ['modern', 'today', 'current', 'now', '21st century', 'contemporary', 'technology', 'social media'],
+        weight: 0.7
+      },
+      'family_relations': {
+        keywords: ['family', 'children', 'parent', 'husband', 'wife', 'marriage', 'divorce', 'inheritance'],
+        weight: 0.8
+      },
+      'business_finance': {
+        keywords: ['business', 'trade', 'investment', 'riba', 'interest', 'halal income', 'zakat calculation'],
+        weight: 0.8
+      }
+    };
   }
 
   /**
@@ -507,20 +546,72 @@ export class IslamicPrompt {
     return { isValid: true };
   }
 
+  /**
+   * Enhanced query classification with deep semantic understanding
+   * @param {string} userInput - User input to classify
+   * @returns {Object} Classification result with topic and confidence
+   */
   classifyQuery(userInput) {
     const lowerInput = userInput.toLowerCase();
+    const classification = {
+      topic: 'general',
+      confidence: 0.5,
+      subtopics: [],
+      complexity: 'simple'
+    };
     
-    // Simple classification based on keywords
-    if (this.islamicGuidanceKeywords.has(lowerInput.split(' ')[0]) || 
-        Array.from(this.islamicGuidanceKeywords).some(keyword => lowerInput.includes(keyword))) {
-      return 'fiqh';
+    // Track scores for each topic
+    const topicScores = {};
+    
+    // Calculate scores for each Islamic topic
+    Object.entries(this.islamicTopicClassification).forEach(([topic, data]) => {
+      let score = 0;
+      const words = lowerInput.split(/\s+/);
+      
+      // Word matching score
+      const matchedKeywords = data.keywords.filter(keyword => lowerInput.includes(keyword));
+      score += matchedKeywords.length * data.weight;
+      
+      // Bonus for exact matches at beginning or end
+      if (matchedKeywords.some(keyword => 
+        lowerInput.startsWith(keyword) || lowerInput.endsWith(keyword))) {
+        score += 0.5 * data.weight;
+      }
+      
+      topicScores[topic] = score;
+    });
+    
+    // Find the topic with highest score
+    let maxScore = 0;
+    let bestTopic = 'general';
+    
+    Object.entries(topicScores).forEach(([topic, score]) => {
+      if (score > maxScore) {
+        maxScore = score;
+        bestTopic = topic;
+      }
+    });
+    
+    // Set classification based on scores
+    if (maxScore > 0) {
+      classification.topic = bestTopic;
+      classification.confidence = Math.min(1.0, maxScore / 5); // Normalize score
+      classification.subtopics = Object.entries(topicScores)
+        .filter(([topic, score]) => score > 0 && topic !== bestTopic)
+        .map(([topic, score]) => topic);
     }
     
-    if (Array.from(this.spiritualKeywords).some(keyword => lowerInput.includes(keyword))) {
-      return 'spiritual';
+    // Determine complexity based on input length and question marks
+    const wordCount = lowerInput.split(/\s+/).length;
+    const questionCount = (lowerInput.match(/\?/g) || []).length;
+    
+    if (wordCount > 20 || questionCount > 2) {
+      classification.complexity = 'complex';
+    } else if (wordCount > 10 || questionCount > 1) {
+      classification.complexity = 'moderate';
     }
     
-    return 'general';
+    return classification;
   }
 
   /**
@@ -702,6 +793,25 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
     
     // Add universal Quran inclusion instruction
     prompt += this.getUniversalQuranInclusionInstruction();
+    
+    // Add enhanced response structure for better understanding with deeper semantic analysis
+    prompt += '\n\n**ENHANCED RESPONSE STRUCTURE FOR ISLAMIC GUIDANCE:**';
+    prompt += '\n1. DIRECT ANSWER: Provide a clear, concise answer to the main question with Quranic/Hadith references';
+    prompt += '\n2. ISLAMIC FOUNDATION: Reference relevant Quranic verses and Hadith with proper citations';
+    prompt += '\n3. SCHOLARLY PERSPECTIVE: Mention different scholarly opinions when relevant (Hanafi, Shafi\'i, Maliki, Hanbali)';
+    prompt += '\n4. PRACTICAL APPLICATION: Provide guidance on how to apply the knowledge in daily life';
+    prompt += '\n5. CONTEMPORARY RELEVANCE: Connect the guidance to modern life when appropriate';
+    prompt += '\n6. ETHICAL CONSIDERATIONS: Address any moral or ethical dimensions of the question';
+    prompt += '\n7. SPIRITUAL BENEFITS: Highlight the spiritual growth opportunities in following the guidance';
+    
+    // Add enhanced Islamic topic classification for deeper understanding
+    prompt += '\n\n**ENHANCED ISLAMIC TOPIC CLASSIFICATION:**';
+    prompt += '\n- When addressing Fiqh questions, clearly state the ruling (hukm) and mention different scholarly opinions';
+    prompt += '\n- For Quranic studies, provide context of revelation (asbab al-nuzul) and relevant tafsir';
+    prompt += '\n- For Hadith studies, verify authenticity and provide relevant commentary';
+    prompt += '\n- For Seerah questions, connect historical events to contemporary lessons';
+    prompt += '\n- For spiritual development, emphasize the connection between actions and spiritual growth';
+    prompt += '\n- For contemporary issues, ground solutions in Islamic principles while addressing modern contexts';
     
     return prompt;
   }

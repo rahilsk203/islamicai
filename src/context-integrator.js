@@ -1,3 +1,5 @@
+import { IslamicPrompt } from './islamic-prompt.js';
+
 /**
  * ContextIntegrator - DSA-based intelligent context integration system
  * 
@@ -6,9 +8,12 @@
  * when there's contextual or logical connection.
  */
 export class ContextIntegrator {
-  constructor() {
+  constructor(islamicPrompt = null) {
     // Initialize data structures for efficient context analysis
     this._initializeOptimizedDataStructures();
+    
+    // Accept IslamicPrompt instance to avoid circular dependency
+    this.islamicPrompt = islamicPrompt;
   }
 
   /**
@@ -83,8 +88,8 @@ export class ContextIntegrator {
     // DSA: LRU cache for expensive operations
     this.lruCache = new Map();
     
-    // Connection pooling for performance
-    this.connectionPool = [];
+    // Note: We'll initialize the IslamicPrompt separately to avoid circular dependency
+    // this.islamicPrompt = new IslamicPrompt();
   }
 
   /**
@@ -710,7 +715,7 @@ export class ContextIntegrator {
       integratedContext.prioritizedContext
     );
     
-    // Build integrated prompt
+    // Build integrated prompt with enhanced Islamic context integration
     integratedContext.integratedPrompt = this._buildIntegratedPrompt(
       integratedContext.prioritizedContext,
       integratedContext.integrationStrategy,
@@ -823,6 +828,16 @@ export class ContextIntegrator {
         }
       }
     }
+    
+    // Add enhanced Islamic context integration with deeper semantic understanding
+    prompt += '\n**ISLAMIC CONTEXT ENHANCEMENT:**\n';
+    prompt += '- Always provide responses grounded in authentic Islamic sources (Quran, Hadith, scholarly consensus)\n';
+    prompt += '- When discussing Islamic jurisprudence, acknowledge different scholarly opinions when relevant\n';
+    prompt += '- Connect contemporary questions with Islamic principles and wisdom\n';
+    prompt += '- Ensure responses are both accurate and practically applicable\n';
+    prompt += '- Include at least one relevant Quranic verse in every response with proper context\n';
+    prompt += '- Reference authentic Hadith when relevant to support teachings\n';
+    prompt += '- Provide practical guidance that aligns with Islamic ethics and values\n';
     
     return prompt;
   }

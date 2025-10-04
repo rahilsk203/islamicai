@@ -237,6 +237,27 @@ export class AdaptiveLanguageSystem {
       scores.urdu = (scores.urdu || 0) + (urduMatches.length / words.length);
     }
     
+    // Enhanced Hinglish detection: Look for mixed patterns
+    const hinglishIndicators = [
+      'kya', 'kaise', 'kab', 'kahan', 'kyun', 'bhai', 'sister', 'brother', 
+      'waqt', 'samay', 'abhi', 'tuu', 'bataa', 'sakte', 'hai', 'kaya', 
+      'halat', 'thik', 'hoon', 'hun', 'hain', 'kasa', 'assalamu', 'alaikum', 
+      'salam', 'allah', 'islam', 'quran', 'mein', 'se', 'ko', 'par', 'aur', 
+      'ya', 'lekin', 'kyunki', 'kitna', 'kitni', 'kitne'
+    ];
+    
+    let hinglishIndicatorCount = 0;
+    for (const indicator of hinglishIndicators) {
+      if (lowerMessage.includes(indicator)) {
+        hinglishIndicatorCount++;
+      }
+    }
+    
+    // Boost Hinglish score if we find multiple indicators
+    if (hinglishIndicatorCount > 2) {
+      scores.hinglish = (scores.hinglish || 0) + (hinglishIndicatorCount * 0.3);
+    }
+    
     // Apply weights
     if (scores.hinglish) scores.hinglish *= this.languageModels.hinglish.weight;
     if (scores.hindi) scores.hindi *= this.languageModels.hindi.weight;
@@ -666,28 +687,28 @@ export class AdaptiveLanguageSystem {
       const lang = adaptation.userPreference.toLowerCase();
       switch (lang) {
         case 'hinglish':
-          return "Respond in Hinglish (mix of Hindi and English) with Islamic terminology in Arabic. Use casual, friendly tone.";
+          return "Respond in Hinglish (natural mix of Hindi and English) with authentic Islamic terminology. Use casual, friendly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
         case 'hindi':
-          return "Respond in Hindi with Islamic terminology in Arabic. Use formal yet approachable tone.";
+          return "Respond in Hindi with authentic Islamic terminology in Arabic script where appropriate. Use formal yet approachable tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
         case 'urdu':
-          return "Respond in Urdu with Islamic terminology in Arabic. Use formal and respectful tone.";
+          return "Respond in Urdu with authentic Islamic terminology in Arabic script. Use formal and respectful tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
         case 'english':
-          return "Respond in English with Islamic terminology in Arabic. Use clear and scholarly tone.";
+          return "Respond in English with authentic Islamic terminology in Arabic script where appropriate. Use clear, scholarly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
         default:
-          return "Respond in English with Islamic terminology in Arabic. Use clear and scholarly tone.";
+          return "Respond in English with authentic Islamic terminology in Arabic script where appropriate. Use clear, scholarly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
       }
     }
     
     // Otherwise, use detected language
     switch (detectedLanguage) {
       case 'hinglish':
-        return "Respond in Hinglish (mix of Hindi and English) with Islamic terminology in Arabic. Use casual, friendly tone.";
+        return "Respond in Hinglish (natural mix of Hindi and English) with authentic Islamic terminology. Use casual, friendly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
       case 'hindi':
-        return "Respond in Hindi with Islamic terminology in Arabic. Use formal yet approachable tone.";
+        return "Respond in Hindi with authentic Islamic terminology in Arabic script where appropriate. Use formal yet approachable tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
       case 'urdu':
-        return "Respond in Urdu with Islamic terminology in Arabic. Use formal and respectful tone.";
+        return "Respond in Urdu with authentic Islamic terminology in Arabic script. Use formal and respectful tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
       default:
-        return "Respond in English with Islamic terminology in Arabic. Use clear and scholarly tone.";
+        return "Respond in English with authentic Islamic terminology in Arabic script where appropriate. Use clear, scholarly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
     }
   }
 

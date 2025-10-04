@@ -34,6 +34,10 @@ export class IntelligentMemory {
     // DSA: Tiny LRU for TF-IDF results per (query,len) to reuse scoring
     this.tfidfCache = new Map(); // key -> scored array
     this.tfidfCacheCap = 64;
+    
+    // DSA: Enhanced memory clustering for faster retrieval
+    this.memoryClusters = new Map(); // clusterId -> [memoryIds]
+    this.clusterCentroids = new Map(); // clusterId -> centroidVector
   }
 
   // Derive lightweight behavior signals from a single message (O(1) ops per message)
@@ -818,7 +822,7 @@ export class IntelligentMemory {
     }
     
     // Extract family mentions
-    const familyRegex = /(maa|papa|bhai|sister|behan|family|parivar|ghar|home|grih)/i;
+    const familyRegex = /(maa|papa|bhai|sister|behan|family|parivar|ghar|home)/i;
     if (familyRegex.test(message)) {
       keyFacts.push({
         type: 'family',
@@ -951,5 +955,91 @@ export class IntelligentMemory {
 
   generateMemoryId() {
     return 'mem_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  }
+  
+  // DSA: Enhanced memory search with indexing and advanced algorithms
+  searchMemories(query, memories, limit = 10) {
+    // Use inverted index for fast keyword search
+    if (this.memoryIndex.size > 0) {
+      const queryWords = query.toLowerCase().split(/\s+/);
+      const candidateMemories = new Set();
+      
+      // Find memories containing any query word with enhanced matching
+      queryWords.forEach(word => {
+        if (this.memoryIndex.has(word)) {
+          this.memoryIndex.get(word).forEach(memory => {
+            candidateMemories.add(memory);
+          });
+        }
+      });
+      
+      // Convert set to array
+      const candidates = Array.from(candidateMemories);
+      
+      // If we have candidates, rank them using TF-IDF with enhanced scoring
+      if (candidates.length > 0) {
+        const scored = this.calculateTFIDF(query, candidates);
+        return scored
+          .sort((a, b) => {
+            // Enhanced sorting with multiple factors
+            const scoreA = (b.tfidfScore || 0) * (b.priority || 1) * (b.decayFactor || 1);
+            const scoreB = (a.tfidfScore || 0) * (a.priority || 1) * (a.decayFactor || 1);
+            return scoreB - scoreA;
+          })
+          .slice(0, limit)
+          .map(memory => {
+            this.updateMemoryAccess(memory);
+            return memory;
+          });
+      }
+    }
+    
+    // Fallback to simple TF-IDF search with enhanced scoring
+    const scored = this.calculateTFIDF(query, memories);
+    return scored
+      .sort((a, b) => {
+        // Enhanced sorting with multiple factors
+        const scoreA = (b.tfidfScore || 0) * (b.priority || 1) * (b.decayFactor || 1);
+        const scoreB = (a.tfidfScore || 0) * (a.priority || 1) * (a.decayFactor || 1);
+        return scoreB - scoreA;
+      })
+      .slice(0, limit)
+      .map(memory => {
+        this.updateMemoryAccess(memory);
+        return memory;
+      });
+  }
+  
+  // DSA: Precompute memory index for faster retrieval with enhanced indexing
+  precomputeMemoryIndex(memories) {
+    this.memoryIndex = this.buildInvertedIndex(memories);
+    
+    // Additionally build a trie structure for prefix matching
+    this.memoryTrie = this.buildMemoryTrie(memories);
+    
+    // Precompute clusters for faster retrieval
+    this.memoryClusters = this._clusterMemories(memories);
+  }
+  
+  // DSA: Clear all memory indexes
+  clearMemoryIndexes() {
+    this.memoryIndex.clear();
+    this.memoryHashMap.clear();
+    this.memoryBloomFilter.clear();
+    this.memoryCache.clear();
+    this.lruCache.clear();
+    this.tfidfCache.clear();
+    this.recentQuerySet.clear();
+    
+    // Clear additional structures
+    if (this.memoryTrie) {
+      this.memoryTrie = null;
+    }
+    if (this.memoryClusters) {
+      this.memoryClusters.clear();
+    }
+    if (this.clusterCentroids) {
+      this.clusterCentroids.clear();
+    }
   }
 }
