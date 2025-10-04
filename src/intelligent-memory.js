@@ -1,18 +1,34 @@
 export class IntelligentMemory {
   constructor() {
+    // Enhanced memory types for behavior tracking
     this.memoryTypes = {
       USER_PREFERENCES: 'preferences',
       IMPORTANT_FACTS: 'facts',
       CONVERSATION_CONTEXT: 'context',
       ISLAMIC_KNOWLEDGE: 'islamic',
       EMOTIONAL_STATE: 'emotional',
-      LEARNING_PATTERNS: 'learning'
+      LEARNING_PATTERNS: 'learning',
+      // New memory types for enhanced behavior tracking
+      BEHAVIORAL_PATTERNS: 'behavioral_patterns',
+      RESPONSE_PREFERENCES: 'response_preferences',
+      TOPIC_INTERESTS: 'topic_interests',
+      LEARNING_PROGRESS: 'learning_progress',
+      INTERACTION_FREQUENCY: 'interaction_frequency'
     };
     
+    // Enhanced memory priority system
     this.memoryPriority = {
-      HIGH: 3,
-      MEDIUM: 2,
-      LOW: 1
+      CRITICAL: 4, // For essential user information
+      HIGH: 3,     // For important behavioral patterns
+      MEDIUM: 2,   // For general preferences
+      LOW: 1       // For minor interaction details
+    };
+    
+    // Enhanced behavior tracking structures
+    this.behavioralMemory = {
+      patternRecognition: new Map(), // Stores recognized patterns
+      preferenceEvolution: new Map(), // Tracks how preferences change over time
+      learningAdaptation: new Map() // Stores adaptive learning strategies
     };
     
     // DSA: Enhanced data structures for memory management
@@ -40,7 +56,11 @@ export class IntelligentMemory {
     this.clusterCentroids = new Map(); // clusterId -> centroidVector
   }
 
-  // Derive lightweight behavior signals from a single message (O(1) ops per message)
+  /**
+   * Enhanced behavior signals extraction with deeper analysis
+   * @param {string} message - User message
+   * @returns {Object} Enhanced behavior signals
+   */
   extractBehaviorSignals(message) {
     const text = (message || '').toString();
     const lower = text.toLowerCase();
@@ -56,12 +76,84 @@ export class IntelligentMemory {
       prefersArabic: arabicMatches.length > 5,
       prefersShort: /short|brief|sankshipt|chhota|small/.test(lower),
       prefersDetailed: /detail|tafseel|long|lamba|comprehensive/.test(lower),
-      correctionTone: /(actually|nahi|galat|incorrect|sahi ye hai)/.test(lower)
+      correctionTone: /(actually|nahi|galat|incorrect|sahi ye hai)/.test(lower),
+      // Enhanced signals
+      gratitudeExpressions: /(thank|shukran|thanks|jazakallah)/.test(lower),
+      confusionIndicators: /(confused|don't understand|help me|can't understand)/.test(lower),
+      repetitionPatterns: this._detectRepetition(text),
+      complexityPreference: this._detectComplexityPreference(text),
+      interactionStyle: this._detectInteractionStyle(text)
     };
     return signals;
   }
 
-  // O(n) single-pass aggregation into a compact behavior profile
+  /**
+   * Detect repetition patterns in user messages
+   * @param {string} text - User message text
+   * @returns {Object} Repetition pattern analysis
+   * @private
+   */
+  _detectRepetition(text) {
+    // Simple repetition detection based on word frequency
+    const words = text.toLowerCase().split(/\s+/);
+    const wordFrequency = {};
+    
+    words.forEach(word => {
+      wordFrequency[word] = (wordFrequency[word] || 0) + 1;
+    });
+    
+    const repeatedWords = Object.keys(wordFrequency).filter(word => wordFrequency[word] > 2);
+    
+    return {
+      hasRepetition: repeatedWords.length > 0,
+      repeatedWords: repeatedWords,
+      repetitionCount: repeatedWords.length
+    };
+  }
+
+  /**
+   * Detect user's complexity preference
+   * @param {string} text - User message text
+   * @returns {string} Complexity preference level
+   * @private
+   */
+  _detectComplexityPreference(text) {
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText.includes('simple') || lowerText.includes('basic') || lowerText.includes('easy')) {
+      return 'simple';
+    } else if (lowerText.includes('advanced') || lowerText.includes('complex') || lowerText.includes('detailed')) {
+      return 'complex';
+    }
+    
+    return 'moderate';
+  }
+
+  /**
+   * Detect user's interaction style
+   * @param {string} text - User message text
+   * @returns {string} Interaction style
+   * @private
+   */
+  _detectInteractionStyle(text) {
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText.includes('please') || lowerText.includes('kindly') || lowerText.includes('request')) {
+      return 'polite';
+    } else if (lowerText.includes('now') || lowerText.includes('quick') || lowerText.includes('fast')) {
+      return 'urgent';
+    } else if (lowerText.includes('just') || lowerText.includes('only')) {
+      return 'direct';
+    }
+    
+    return 'standard';
+  }
+
+  /**
+   * Enhanced behavior profile computation with deeper insights
+   * @param {Array} conversationHistory - Conversation history
+   * @returns {Object} Enhanced behavior profile
+   */
   computeBehaviorProfile(conversationHistory = []) {
     let userMsgCount = 0;
     let agg = {
@@ -75,8 +167,18 @@ export class IntelligentMemory {
       prefersArabic: 0,
       prefersShort: 0,
       prefersDetailed: 0,
-      corrections: 0
+      corrections: 0,
+      // Enhanced aggregations
+      gratitudeExpressions: 0,
+      confusionIndicators: 0,
+      repetitionInstances: 0,
+      simplePreference: 0,
+      complexPreference: 0,
+      politeInteractions: 0,
+      urgentInteractions: 0,
+      directInteractions: 0
     };
+    
     for (const msg of conversationHistory) {
       if (msg.role !== 'user') continue;
       userMsgCount++;
@@ -92,7 +194,17 @@ export class IntelligentMemory {
       agg.prefersShort += s.prefersShort ? 1 : 0;
       agg.prefersDetailed += s.prefersDetailed ? 1 : 0;
       agg.corrections += s.correctionTone ? 1 : 0;
+      // Enhanced aggregations
+      agg.gratitudeExpressions += s.gratitudeExpressions ? 1 : 0;
+      agg.confusionIndicators += s.confusionIndicators ? 1 : 0;
+      agg.repetitionInstances += s.repetitionPatterns.hasRepetition ? 1 : 0;
+      if (s.complexityPreference === 'simple') agg.simplePreference++;
+      if (s.complexityPreference === 'complex') agg.complexPreference++;
+      if (s.interactionStyle === 'polite') agg.politeInteractions++;
+      if (s.interactionStyle === 'urgent') agg.urgentInteractions++;
+      if (s.interactionStyle === 'direct') agg.directInteractions++;
     }
+    
     const denom = Math.max(1, userMsgCount);
     const avgLen = Math.round(agg.totalChars / denom);
     const profile = {
@@ -107,10 +219,90 @@ export class IntelligentMemory {
       arabicPreferenceRatio: +(agg.prefersArabic / denom).toFixed(2),
       prefersShortRatio: +(agg.prefersShort / denom).toFixed(2),
       prefersDetailedRatio: +(agg.prefersDetailed / denom).toFixed(2),
-      correctionFrequency: +(agg.corrections / denom).toFixed(2)
+      correctionFrequency: +(agg.corrections / denom).toFixed(2),
+      // Enhanced profile data
+      gratitudeExpressionRatio: +(agg.gratitudeExpressions / denom).toFixed(2),
+      confusionIndicatorRatio: +(agg.confusionIndicators / denom).toFixed(2),
+      repetitionPatternRatio: +(agg.repetitionInstances / denom).toFixed(2),
+      complexityPreference: this._determineComplexityPreference(agg.simplePreference, agg.complexPreference, denom),
+      dominantInteractionStyle: this._determineDominantInteractionStyle(
+        agg.politeInteractions, agg.urgentInteractions, agg.directInteractions, denom
+      ),
+      learningAdaptability: this._calculateLearningAdaptability(agg, denom)
     };
+    
     return profile;
   }
+
+  /**
+   * Determine user's complexity preference
+   * @param {number} simpleCount - Count of simple preference expressions
+   * @param {number} complexCount - Count of complex preference expressions
+   * @param {number} totalCount - Total message count
+   * @returns {string} Dominant complexity preference
+   * @private
+   */
+  _determineComplexityPreference(simpleCount, complexCount, totalCount) {
+    const simpleRatio = simpleCount / totalCount;
+    const complexRatio = complexCount / totalCount;
+    
+    if (simpleRatio > 0.5) return 'prefers_simple';
+    if (complexRatio > 0.5) return 'prefers_complex';
+    return 'balanced';
+  }
+
+  /**
+   * Determine dominant interaction style
+   * @param {number} politeCount - Count of polite interactions
+   * @param {number} urgentCount - Count of urgent interactions
+   * @param {number} directCount - Count of direct interactions
+   * @param {number} totalCount - Total message count
+   * @returns {string} Dominant interaction style
+   * @private
+   */
+  _determineDominantInteractionStyle(politeCount, urgentCount, directCount, totalCount) {
+    const styles = [
+      { name: 'polite', count: politeCount },
+      { name: 'urgent', count: urgentCount },
+      { name: 'direct', count: directCount }
+    ];
+    
+    const dominant = styles.reduce((max, style) => 
+      style.count > max.count ? style : max, { name: 'standard', count: 0 }
+    );
+    
+    return dominant.name;
+  }
+
+  /**
+   * Calculate user's learning adaptability score
+   * @param {Object} agg - Aggregated behavior data
+   * @param {number} denom - Denominator for ratios
+   * @returns {number} Learning adaptability score (0-1)
+   * @private
+   */
+  _calculateLearningAdaptability(agg, denom) {
+    // Factors contributing to learning adaptability:
+    // 1. Question frequency (curiosity)
+    // 2. Correction frequency (willingness to learn)
+    // 3. Variety in complexity preference (flexibility)
+    // 4. Low repetition (ability to grasp concepts)
+    
+    const curiosityScore = agg.totalQuestions / denom;
+    const correctionScore = agg.corrections / denom;
+    const flexibilityScore = (agg.simplePreference > 0 && agg.complexPreference > 0) ? 1 : 0;
+    const repetitionScore = 1 - (agg.repetitionInstances / denom);
+    
+    // Weighted average
+    return (
+      (curiosityScore * 0.4) +
+      (correctionScore * 0.3) +
+      (flexibilityScore * 0.2) +
+      (repetitionScore * 0.1)
+    );
+  }
+
+  
 
   // O(1) incremental update by weighted merge between old and new snapshot
   updateBehaviorProfile(existingProfile = null, newSnapshot) {
@@ -193,24 +385,27 @@ export class IntelligentMemory {
     };
     
     memories.forEach(memory => {
-      const words = memory.content.toLowerCase().split(/\s+/);
-      let current = trie;
-      
-      words.forEach((word, index) => {
-        // Compress single-child paths
-        if (!current.children[word]) {
-          current.children[word] = { 
-            children: {}, 
-            memories: [], 
-            frequency: 0,
-            isEnd: index === words.length - 1
-          };
-        }
+      // Check if memory has content before accessing it
+      if (memory.content) {
+        const words = memory.content.toLowerCase().split(/\s+/);
+        let current = trie;
         
-        current.children[word].frequency++;
-        current.children[word].memories.push(memory);
-        current = current.children[word];
-      });
+        words.forEach((word, index) => {
+          // Compress single-child paths
+          if (!current.children[word]) {
+            current.children[word] = { 
+              children: {}, 
+              memories: [], 
+              frequency: 0,
+              isEnd: index === words.length - 1
+            };
+          }
+          
+          current.children[word].frequency++;
+          current.children[word].memories.push(memory);
+          current = current.children[word];
+        });
+      }
     });
     
     return trie;
@@ -275,15 +470,18 @@ export class IntelligentMemory {
     const index = new Map();
     
     memories.forEach(memory => {
-      const words = memory.content.toLowerCase().split(/\s+/);
-      const uniqueWords = [...new Set(words)]; // Remove duplicates
-      
-      uniqueWords.forEach(word => {
-        if (!index.has(word)) {
-          index.set(word, []);
-        }
-        index.get(word).push(memory);
-      });
+      // Check if memory has content before accessing it
+      if (memory.content) {
+        const words = memory.content.toLowerCase().split(/\s+/);
+        const uniqueWords = [...new Set(words)]; // Remove duplicates
+        
+        uniqueWords.forEach(word => {
+          if (!index.has(word)) {
+            index.set(word, []);
+          }
+          index.get(word).push(memory);
+        });
+      }
     });
     
     return index;
@@ -411,7 +609,14 @@ export class IntelligentMemory {
     };
   }
 
-  // DSA: Enhanced memory creation with better metadata
+  /**
+   * Enhanced memory creation with behavioral metadata
+   * @param {string} content - Memory content
+   * @param {string} type - Memory type
+   * @param {number} priority - Memory priority
+   * @param {Object} metadata - Additional metadata
+   * @returns {Object} Enhanced memory object
+   */
   createMemory(content, type, priority = this.memoryPriority.MEDIUM, metadata = {}) {
     const memoryId = this.generateMemoryId();
     
@@ -445,7 +650,11 @@ export class IntelligentMemory {
         accessTimes: [Date.now()],
         frequency: 1,
         lastAccessTime: Date.now()
-      }
+      },
+      // Enhanced behavioral metadata
+      behavioralInsights: metadata.behavioralInsights || null,
+      userPreferences: metadata.userPreferences || null,
+      learningContext: metadata.learningContext || null
     };
     
     // DSA: Add to HashMap for O(1) lookup
@@ -624,11 +833,14 @@ export class IntelligentMemory {
     let totalWords = 0;
     
     memories.forEach(memory => {
-      const words = memory.content.toLowerCase().split(/\s+/);
-      words.forEach(word => {
-        wordCounts[word] = (wordCounts[word] || 0) + 1;
-        totalWords++;
-      });
+      // Check if memory has content before accessing it
+      if (memory.content) {
+        const words = memory.content.toLowerCase().split(/\s+/);
+        words.forEach(word => {
+          wordCounts[word] = (wordCounts[word] || 0) + 1;
+          totalWords++;
+        });
+      }
     });
     
     // Normalize word counts
@@ -643,8 +855,9 @@ export class IntelligentMemory {
   // DSA: Calculate similarity between two memories
   _calculateSimilarity(memory1, memory2) {
     // Simple cosine similarity based on word overlap
-    const words1 = new Set(memory1.content.toLowerCase().split(/\s+/));
-    const words2 = new Set(memory2.content.toLowerCase().split(/\s+/));
+    // Check if memories have content before accessing it
+    const words1 = memory1.content ? new Set(memory1.content.toLowerCase().split(/\s+/)) : new Set();
+    const words2 = memory2.content ? new Set(memory2.content.toLowerCase().split(/\s+/)) : new Set();
     
     const intersection = [...words1].filter(word => words2.has(word)).length;
     const union = new Set([...words1, ...words2]).size;
@@ -704,7 +917,11 @@ export class IntelligentMemory {
     });
   }
 
-  // DSA: Memory consolidation to merge similar memories
+  /**
+   * Enhanced memory consolidation with behavioral pattern recognition
+   * @param {Array} memories - Array of memories to consolidate
+   * @returns {Array} Consolidated memories
+   */
   consolidateMemories(memories) {
     const consolidated = [];
     const processed = new Set();
@@ -717,7 +934,7 @@ export class IntelligentMemory {
       memories.forEach((otherMemory, otherIndex) => {
         if (processed.has(otherIndex) || index === otherIndex) return;
         
-        const similarity = this._calculateSimilarity(memory, otherMemory);
+        const similarity = this._calculateEnhancedSimilarity(memory, otherMemory);
         if (similarity > 0.5) { // High similarity threshold
           similarMemories.push(otherMemory);
           processed.add(otherIndex);
@@ -726,7 +943,7 @@ export class IntelligentMemory {
       
       // Consolidate similar memories
       if (similarMemories.length > 1) {
-        const consolidatedMemory = this._mergeMemories(similarMemories);
+        const consolidatedMemory = this._mergeEnhancedMemories(similarMemories);
         consolidated.push(consolidatedMemory);
       } else {
         consolidated.push(memory);
@@ -738,8 +955,51 @@ export class IntelligentMemory {
     return consolidated;
   }
 
-  // DSA: Merge similar memories
-  _mergeMemories(memories) {
+  /**
+   * Enhanced similarity calculation with behavioral factors
+   * @param {Object} memory1 - First memory
+   * @param {Object} memory2 - Second memory
+   * @returns {number} Enhanced similarity score (0-1)
+   * @private
+   */
+  _calculateEnhancedSimilarity(memory1, memory2) {
+    // Base similarity from content
+    const baseSimilarity = this._calculateSimilarity(memory1, memory2);
+    
+    // Behavioral similarity factors
+    let behavioralSimilarity = 0;
+    
+    if (memory1.behavioralInsights && memory2.behavioralInsights) {
+      // Compare behavioral insights
+      const insights1 = memory1.behavioralInsights;
+      const insights2 = memory2.behavioralInsights;
+      
+      // Similarity based on complexity preference
+      if (insights1.complexityPreference === insights2.complexityPreference) {
+        behavioralSimilarity += 0.2;
+      }
+      
+      // Similarity based on interaction style
+      if (insights1.dominantInteractionStyle === insights2.dominantInteractionStyle) {
+        behavioralSimilarity += 0.15;
+      }
+      
+      // Similarity based on learning adaptability
+      const adaptabilityDiff = Math.abs(insights1.learningAdaptability - insights2.learningAdaptability);
+      behavioralSimilarity += (1 - adaptabilityDiff) * 0.15;
+    }
+    
+    // Weighted combination
+    return (baseSimilarity * 0.7) + (behavioralSimilarity * 0.3);
+  }
+
+  /**
+   * Enhanced memory merging with behavioral data preservation
+   * @param {Array} memories - Array of memories to merge
+   * @returns {Object} Merged memory
+   * @private
+   */
+  _mergeEnhancedMemories(memories) {
     // Create merged memory with combined properties
     const primaryMemory = memories[0];
     
@@ -768,6 +1028,15 @@ export class IntelligentMemory {
       primaryMemory.lastAccessed
     );
     
+    // Merge behavioral insights (take most recent)
+    const behavioralInsights = memories.reduce((latest, m) => {
+      if (!latest || (m.behavioralInsights && 
+          new Date(m.timestamp) > new Date(latest.timestamp))) {
+        return m.behavioralInsights;
+      }
+      return latest;
+    }, null);
+    
     return {
       ...primaryMemory,
       content: mergedContent,
@@ -775,6 +1044,7 @@ export class IntelligentMemory {
       priority: mergedPriority,
       accessCount: mergedAccessCount,
       lastAccessed: mergedTimestamp,
+      behavioralInsights: behavioralInsights,
       // Keep track of merged memories
       mergedFrom: memories.map(m => m.id)
     };
@@ -787,7 +1057,12 @@ export class IntelligentMemory {
       keyFacts: [],
       userPreferences: {},
       emotionalContext: 'neutral',
-      learningPatterns: {}
+      learningPatterns: {},
+      // Enhanced fields
+      behavioralInsights: null,
+      responsePreferences: {},
+      topicInterests: {},
+      learningProgress: {}
     };
     
     // Extract Islamic topics
@@ -804,6 +1079,18 @@ export class IntelligentMemory {
     
     // Extract learning patterns
     this.extractLearningPatterns(userMessage, conversationHistory, importantInfo.learningPatterns);
+    
+    // NEW: Extract behavioral insights
+    importantInfo.behavioralInsights = this.computeBehaviorProfile(conversationHistory);
+    
+    // NEW: Extract response preferences
+    importantInfo.responsePreferences = this.extractResponsePreferences(userMessage);
+    
+    // NEW: Extract topic interests
+    importantInfo.topicInterests = this.extractTopicInterests(userMessage);
+    
+    // NEW: Extract learning progress
+    importantInfo.learningProgress = this.assessLearningProgress(conversationHistory);
     
     return importantInfo;
   }
@@ -929,7 +1216,7 @@ export class IntelligentMemory {
 
     // Analyze question types
     conversationHistory.forEach(msg => {
-      if (msg.role === 'user') {
+      if (msg.role === 'user' && msg.content) {
         if (msg.content.includes('?')) {
           if (msg.content.includes('what')) patterns.questionTypes.push('what');
           if (msg.content.includes('why')) patterns.questionTypes.push('why');
@@ -941,7 +1228,7 @@ export class IntelligentMemory {
     });
 
     // Analyze response length preference
-    const aiResponses = conversationHistory.filter(msg => msg.role === 'assistant');
+    const aiResponses = conversationHistory.filter(msg => msg.role === 'assistant' && msg.content);
     if (aiResponses.length > 0) {
       const avgLength = aiResponses.reduce((sum, msg) => sum + msg.content.length, 0) / aiResponses.length;
       
@@ -951,6 +1238,152 @@ export class IntelligentMemory {
     }
 
     return patterns;
+  }
+
+  /**
+   * Extract user response preferences
+   * @param {string} message - User message
+   * @returns {Object} Response preferences
+   */
+  extractResponsePreferences(message) {
+    const lowerMessage = message.toLowerCase();
+    const preferences = {};
+    
+    // Length preference
+    if (lowerMessage.includes('brief') || lowerMessage.includes('short') || lowerMessage.includes('concise')) {
+      preferences.length = 'brief';
+    } else if (lowerMessage.includes('detailed') || lowerMessage.includes('explain more') || lowerMessage.includes('in detail')) {
+      preferences.length = 'detailed';
+    } else {
+      preferences.length = 'balanced';
+    }
+    
+    // Detail level preference
+    if (lowerMessage.includes('simple') || lowerMessage.includes('basic')) {
+      preferences.detailLevel = 'basic';
+    } else if (lowerMessage.includes('advanced') || lowerMessage.includes('complex')) {
+      preferences.detailLevel = 'advanced';
+    } else {
+      preferences.detailLevel = 'intermediate';
+    }
+    
+    // Example preference
+    if (lowerMessage.includes('example') || lowerMessage.includes('for example') || lowerMessage.includes('like')) {
+      preferences.examples = true;
+    } else if (lowerMessage.includes('no example') || lowerMessage.includes('don\'t need example')) {
+      preferences.examples = false;
+    } else {
+      preferences.examples = true;
+    }
+    
+    // Tone preference
+    if (lowerMessage.includes('formal') || lowerMessage.includes('scholarly')) {
+      preferences.tone = 'formal';
+    } else if (lowerMessage.includes('casual') || lowerMessage.includes('friendly')) {
+      preferences.tone = 'casual';
+    } else {
+      preferences.tone = 'balanced';
+    }
+    
+    return preferences;
+  }
+
+  /**
+   * Extract topic interests from user message
+   * @param {string} message - User message
+   * @returns {Object} Topic interests mapping
+   */
+  extractTopicInterests(message) {
+    const lowerMessage = message.toLowerCase();
+    const interests = {};
+    
+    const topics = [
+      { name: 'quran', keywords: ['quran', 'surah', 'ayah', 'verse', 'recitation'] },
+      { name: 'hadith', keywords: ['hadith', 'sunnah', 'prophet', 'sahih', 'bukhari'] },
+      { name: 'fiqh', keywords: ['fiqh', 'halal', 'haram', 'ruling', 'judgment'] },
+      { name: 'seerah', keywords: ['seerah', 'history', 'prophet muhammad', 'companions'] },
+      { name: 'spirituality', keywords: ['iman', 'faith', 'taqwa', 'repentance', 'dhikr'] },
+      { name: 'prayer', keywords: ['prayer', 'namaz', 'salah', 'wudu'] },
+      { name: 'fasting', keywords: ['fasting', 'roza', 'ramadan'] },
+      { name: 'zakat', keywords: ['zakat', 'charity', 'sadaqah'] },
+      { name: 'hajj', keywords: ['hajj', 'pilgrimage', 'umrah'] },
+      { name: 'ethics', keywords: ['ethics', 'morals', 'character', 'adab'] },
+      { name: 'family', keywords: ['family', 'children', 'parent', 'marriage', 'divorce'] },
+      { name: 'business', keywords: ['business', 'trade', 'investment', 'riba'] }
+    ];
+    
+    topics.forEach(topic => {
+      const interestLevel = topic.keywords.filter(keyword => lowerMessage.includes(keyword)).length;
+      if (interestLevel > 0) {
+        interests[topic.name] = interestLevel;
+      }
+    });
+    
+    return interests;
+  }
+
+  /**
+   * Assess user's learning progress
+   * @param {Array} conversationHistory - Conversation history
+   * @returns {Object} Learning progress assessment
+   */
+  assessLearningProgress(conversationHistory) {
+    if (conversationHistory.length === 0) {
+      return {
+        stage: 'beginner',
+        topicsEngaged: 0,
+        questionComplexity: 'simple',
+        comprehensionIndicators: 0
+      };
+    }
+    
+    // Count topics engaged with
+    const allMessages = conversationHistory
+      .filter(msg => msg.role === 'user' && msg.content)
+      .map(msg => msg.content.toLowerCase());
+    
+    const topics = ['quran', 'hadith', 'fiqh', 'seerah', 'spirituality', 'prayer', 
+                   'fasting', 'zakat', 'hajj', 'ethics', 'family', 'business'];
+    
+    const topicsEngaged = topics.filter(topic => 
+      allMessages.some(msg => msg.includes(topic))
+    ).length;
+    
+    // Assess question complexity
+    const questions = allMessages.filter(msg => msg.includes('?'));
+    let complexity = 'simple';
+    
+    if (questions.some(q => 
+      q.includes('how') || q.includes('why') || q.includes('explain'))) {
+      complexity = 'moderate';
+    }
+    
+    if (questions.some(q => 
+      q.includes('compare') || q.includes('analyze') || q.includes('evaluate'))) {
+      complexity = 'complex';
+    }
+    
+    // Count comprehension indicators (follow-up questions, deeper inquiries)
+    const comprehensionIndicators = allMessages.filter(msg => 
+      msg.includes('more') || msg.includes('further') || msg.includes('elaborate') ||
+      msg.includes('detail') || msg.includes('example')
+    ).length;
+    
+    // Determine learning stage
+    let stage = 'beginner';
+    if (topicsEngaged >= 3 && complexity !== 'simple') {
+      stage = 'intermediate';
+    }
+    if (topicsEngaged >= 6 && complexity === 'complex' && comprehensionIndicators > 2) {
+      stage = 'advanced';
+    }
+    
+    return {
+      stage: stage,
+      topicsEngaged: topicsEngaged,
+      questionComplexity: complexity,
+      comprehensionIndicators: comprehensionIndicators
+    };
   }
 
   generateMemoryId() {

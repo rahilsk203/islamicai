@@ -98,6 +98,19 @@ export class AdaptiveLanguageSystem {
     
     // Connection pooling for performance
     this.connectionPool = [];
+    
+    // Enhanced user behavior tracking
+    this.userBehaviorPatterns = new Map();
+    this.sessionInteractionHistory = new Map();
+    
+    // Advanced pattern recognition for user preferences
+    this.userPreferencePatterns = {
+      responseLength: new Map(), // tracks user preference for brief/detailed responses
+      questionTypes: new Map(), // tracks types of questions user asks
+      interactionFrequency: new Map(), // tracks how often user interacts
+      topicInterests: new Map(), // tracks topics user frequently discusses
+      responseTimeExpectations: new Map() // tracks user's expected response speed
+    };
   }
 
   /**
@@ -440,7 +453,7 @@ export class AdaptiveLanguageSystem {
   }
 
   /**
-   * Simplified adaptation method for faster processing
+   * Enhanced adaptation method with behavior pattern analysis
    * @param {string} userMessage - User's message
    * @param {string} sessionId - Session identifier
    * @param {Object} context - Additional context
@@ -475,6 +488,9 @@ export class AdaptiveLanguageSystem {
     // Check for contextual connections with previous messages
     const contextualConnection = this.analyzeContextualConnection(userMessage, context.previousMessages || []);
     
+    // NEW: Analyze user behavior patterns
+    const behaviorAnalysis = this.analyzeUserBehavior(sessionId, userMessage, context);
+    
     // NEW: If there's a strong contextual connection, maintain consistency
     if (contextualConnection.isStrongConnection) {
       return {
@@ -486,7 +502,8 @@ export class AdaptiveLanguageSystem {
         learningData: { 
           method: 'contextual_connection', 
           confidence: contextualConnection.confidence,
-          connectionType: contextualConnection.connectionType
+          connectionType: contextualConnection.connectionType,
+          behaviorPatterns: behaviorAnalysis
         }
       };
     }
@@ -500,7 +517,11 @@ export class AdaptiveLanguageSystem {
         shouldAdapt: true,
         adaptationType: 'high_confidence_detection',
         userPreference: detectionResult.language, // Respond in detected language
-        learningData: { method: 'high_confidence_detection', confidence: detectionResult.confidence }
+        learningData: { 
+          method: 'high_confidence_detection', 
+          confidence: detectionResult.confidence,
+          behaviorPatterns: behaviorAnalysis
+        }
       };
     }
     
@@ -513,7 +534,11 @@ export class AdaptiveLanguageSystem {
         shouldAdapt: true,
         adaptationType: 'conversational_flow',
         userPreference: detectionResult.language,
-        learningData: { method: 'conversational_flow', confidence: detectionResult.confidence }
+        learningData: { 
+          method: 'conversational_flow', 
+          confidence: detectionResult.confidence,
+          behaviorPatterns: behaviorAnalysis
+        }
       };
     }
     
@@ -531,7 +556,11 @@ export class AdaptiveLanguageSystem {
         shouldAdapt: detectionResult.language !== userPreference,
         adaptationType: 'automatic_detection',
         userPreference: detectionResult.language, // Respond in detected language
-        learningData: { method: 'detection', confidence: detectionResult.confidence }
+        learningData: { 
+          method: 'detection', 
+          confidence: detectionResult.confidence,
+          behaviorPatterns: behaviorAnalysis
+        }
       };
     }
     
@@ -544,18 +573,26 @@ export class AdaptiveLanguageSystem {
         shouldAdapt: true,
         adaptationType: 'user_profile_preference',
         userPreference: userLanguagePreference,
-        learningData: { method: 'user_profile_preference', confidence: 1.0 }
+        learningData: { 
+          method: 'user_profile_preference', 
+          confidence: 1.0,
+          behaviorPatterns: behaviorAnalysis
+        }
       };
     }
     
-    // Fall back to user preference
+    // Fall back to user preference with behavior analysis
     return {
       detectedLanguage: userPreference,
       confidence: 0.7,
       shouldAdapt: false,
       adaptationType: 'user_preference',
       userPreference: userPreference,
-      learningData: { method: 'preference', confidence: 0.7 }
+      learningData: { 
+        method: 'preference', 
+        confidence: 0.7,
+        behaviorPatterns: behaviorAnalysis
+      }
     };
   }
 
@@ -704,11 +741,11 @@ export class AdaptiveLanguageSystem {
       case 'hinglish':
         return "Respond in Hinglish (natural mix of Hindi and English) with authentic Islamic terminology. Use casual, friendly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
       case 'hindi':
-        return "Respond in Hindi with authentic Islamic terminology in Arabic script where appropriate. Use formal yet approachable tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
+          return "Respond in Hindi with authentic Islamic terminology in Arabic script where appropriate. Use formal yet approachable tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
       case 'urdu':
-        return "Respond in Urdu with authentic Islamic terminology in Arabic script. Use formal and respectful tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
+          return "Respond in Urdu with authentic Islamic terminology in Arabic script. Use formal and respectful tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
       default:
-        return "Respond in English with authentic Islamic terminology in Arabic script where appropriate. Use clear, scholarly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
+          return "Respond in English with authentic Islamic terminology in Arabic script where appropriate. Use clear, scholarly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
     }
   }
 
@@ -772,14 +809,18 @@ export class AdaptiveLanguageSystem {
    * @returns {boolean} Whether language is consistent
    */
   isConsistentLanguage(previousMessages, language) {
-    if (!previousMessages || previousMessages.length === 0) return false;
+    // Check if previousMessages is an array
+    if (!Array.isArray(previousMessages) || previousMessages.length === 0) return false;
     
     // Count how many previous messages match the detected language
     let matchCount = 0;
     previousMessages.forEach(msg => {
-      const detection = this.analyzeLanguageStyle(msg.content);
-      if (detection.language === language) {
-        matchCount++;
+      // Check if message has content before accessing it
+      if (msg && msg.content) {
+        const detection = this.analyzeLanguageStyle(msg.content);
+        if (detection.language === language) {
+          matchCount++;
+        }
       }
     });
     
@@ -794,8 +835,8 @@ export class AdaptiveLanguageSystem {
    * @returns {Object} Connection analysis result
    */
   analyzeContextualConnection(currentMessage, previousMessages) {
-    // If no previous messages, no connection possible
-    if (!previousMessages || previousMessages.length === 0) {
+    // If no previous messages or not an array, no connection possible
+    if (!Array.isArray(previousMessages) || previousMessages.length === 0) {
       return {
         isStrongConnection: false,
         suggestedLanguage: null,
@@ -812,13 +853,23 @@ export class AdaptiveLanguageSystem {
     
     if (isDirectResponse) {
       // Use the language of the last message for consistency
-      const lastMessageLanguage = this.analyzeLanguageStyle(lastMessage.content);
-      return {
-        isStrongConnection: true,
-        suggestedLanguage: lastMessageLanguage.language,
-        confidence: 0.9,
-        connectionType: 'direct_response'
-      };
+      // Check if lastMessage exists and has content
+      if (lastMessage && lastMessage.content) {
+        const lastMessageLanguage = this.analyzeLanguageStyle(lastMessage.content);
+        return {
+          isStrongConnection: true,
+          suggestedLanguage: lastMessageLanguage.language,
+          confidence: 0.9,
+          connectionType: 'direct_response'
+        };
+      } else {
+        return {
+          isStrongConnection: false,
+          suggestedLanguage: null,
+          confidence: 0,
+          connectionType: null
+        };
+      }
     }
     
     // Check for topic continuity
@@ -864,6 +915,11 @@ export class AdaptiveLanguageSystem {
    * @returns {boolean} Whether it's a direct response
    */
   isDirectResponse(currentMessage, lastMessage) {
+    // Check if lastMessage exists and has content
+    if (!lastMessage || !lastMessage.content) {
+      return false;
+    }
+    
     const currentLower = currentMessage.toLowerCase();
     const lastLower = lastMessage.content.toLowerCase();
     
@@ -904,11 +960,18 @@ export class AdaptiveLanguageSystem {
    * @returns {boolean} Whether it's a topic continuation
    */
   isTopicContinuation(currentMessage, previousMessages) {
-    if (previousMessages.length < 2) return false;
+    // Check if previousMessages is an array
+    if (!Array.isArray(previousMessages) || previousMessages.length < 2) return false;
     
     // Get keywords from recent messages
     const recentMessages = previousMessages.slice(-3);
-    const allContent = recentMessages.map(msg => msg.content).join(' ');
+    // Filter out messages without content and extract content safely
+    const validMessages = recentMessages.filter(msg => msg && msg.content);
+    const allContent = validMessages.map(msg => msg.content).join(' ');
+    
+    // If no valid messages with content, return false
+    if (!allContent) return false;
+    
     const keywords = this.extractKeywords(allContent);
     const currentKeywords = this.extractKeywords(currentMessage);
     
@@ -930,6 +993,9 @@ export class AdaptiveLanguageSystem {
    * @returns {boolean} Whether it references previous content
    */
   hasReferenceToPreviousContent(currentMessage, previousMessages) {
+    // Check if previousMessages is an array
+    if (!Array.isArray(previousMessages)) return false;
+    
     const currentLower = currentMessage.toLowerCase();
     const referencePhrases = [
       'as i said', 'jaisa maine kaha', 'like i mentioned', 
@@ -954,9 +1020,15 @@ export class AdaptiveLanguageSystem {
    * @returns {Object} Language analysis of referenced message
    */
   getReferencedLanguage(currentMessage, previousMessages) {
+    // Check if previousMessages is an array
+    if (!Array.isArray(previousMessages) || previousMessages.length === 0) {
+      return { language: 'english', confidence: 0.5 };
+    }
+    
     // For simplicity, use the language of the last message
-    if (previousMessages.length > 0) {
-      const lastMessage = previousMessages[previousMessages.length - 1];
+    const lastMessage = previousMessages[previousMessages.length - 1];
+    // Check if lastMessage exists and has content
+    if (lastMessage && lastMessage.content) {
       return this.analyzeLanguageStyle(lastMessage.content);
     }
     
@@ -969,16 +1041,20 @@ export class AdaptiveLanguageSystem {
    * @returns {Object} Dominant language analysis
    */
   getDominantLanguage(previousMessages) {
-    if (previousMessages.length === 0) {
+    // Check if previousMessages is an array
+    if (!Array.isArray(previousMessages) || previousMessages.length === 0) {
       return { language: 'english', confidence: 0.5 };
     }
     
     // Analyze languages in recent messages
     const languageCounts = {};
     previousMessages.slice(-5).forEach(msg => {
-      const analysis = this.analyzeLanguageStyle(msg.content);
-      const lang = analysis.language;
-      languageCounts[lang] = (languageCounts[lang] || 0) + 1;
+      // Check if message exists and has content
+      if (msg && msg.content) {
+        const analysis = this.analyzeLanguageStyle(msg.content);
+        const lang = analysis.language;
+        languageCounts[lang] = (languageCounts[lang] || 0) + 1;
+      }
     });
     
     // Find dominant language
@@ -1018,6 +1094,204 @@ export class AdaptiveLanguageSystem {
       .split(/\s+/) // Split by whitespace
       .filter(word => word.length > 2) // Only words with 3+ characters
       .filter(word => !commonWords.includes(word)); // Remove common words
+  }
+
+  /**
+   * Analyze user behavior patterns for adaptive responses
+   * @param {string} sessionId - Session identifier
+   * @param {string} userMessage - Current user message
+   * @param {Object} context - Context including previous messages and user profile
+   * @returns {Object} Behavior analysis results
+   */
+  analyzeUserBehavior(sessionId, userMessage, context) {
+    // Initialize session behavior tracking if not exists
+    if (!this.sessionInteractionHistory.has(sessionId)) {
+      this.sessionInteractionHistory.set(sessionId, {
+        interactions: [],
+        startTime: Date.now(),
+        messageCount: 0,
+        avgResponseTime: 0,
+        preferredTopics: new Set(),
+        questionPatterns: [],
+        responseLengthPreferences: []
+      });
+    }
+    
+    const sessionHistory = this.sessionInteractionHistory.get(sessionId);
+    
+    // Track interaction
+    const interaction = {
+      timestamp: Date.now(),
+      message: userMessage,
+      messageType: this.classifyMessageType(userMessage),
+      messageLength: userMessage.length,
+      hasQuestion: userMessage.includes('?'),
+      topics: this.extractTopics(userMessage)
+    };
+    
+    sessionHistory.interactions.push(interaction);
+    sessionHistory.messageCount++;
+    
+    // Update average response time
+    if (sessionHistory.interactions.length > 1) {
+      const lastInteraction = sessionHistory.interactions[sessionHistory.interactions.length - 2];
+      const responseTime = interaction.timestamp - lastInteraction.timestamp;
+      sessionHistory.avgResponseTime = (sessionHistory.avgResponseTime * (sessionHistory.interactions.length - 2) + responseTime) / (sessionHistory.interactions.length - 1);
+    }
+    
+    // Track preferred topics
+    interaction.topics.forEach(topic => sessionHistory.preferredTopics.add(topic));
+    
+    // Track question patterns
+    if (interaction.hasQuestion) {
+      const questionType = this.classifyQuestionType(userMessage);
+      sessionHistory.questionPatterns.push(questionType);
+    }
+    
+    // Track response length preferences
+    sessionHistory.responseLengthPreferences.push(
+      userMessage.length < 50 ? 'brief' : 
+      userMessage.length > 200 ? 'detailed' : 'medium'
+    );
+    
+    // Analyze behavior patterns
+    const behaviorPatterns = {
+      sessionDuration: Date.now() - sessionHistory.startTime,
+      messageFrequency: sessionHistory.messageCount / ((Date.now() - sessionHistory.startTime) / 60000), // messages per minute
+      avgResponseTime: sessionHistory.avgResponseTime,
+      preferredTopics: Array.from(sessionHistory.preferredTopics),
+      dominantQuestionType: this.getDominantElement(sessionHistory.questionPatterns),
+      preferredResponseLength: this.getDominantElement(sessionHistory.responseLengthPreferences),
+      interactionStyle: this.determineInteractionStyle(sessionHistory),
+      learningSpeed: this.estimateLearningSpeed(sessionHistory)
+    };
+    
+    // Store behavior patterns for this user
+    this.userBehaviorPatterns.set(sessionId, behaviorPatterns);
+    
+    return behaviorPatterns;
+  }
+
+  /**
+   * Classify message type based on content
+   * @param {string} message - User message
+   * @returns {string} Message type
+   */
+  classifyMessageType(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('?')) return 'question';
+    if (lowerMessage.startsWith('/')) return 'command';
+    if (lowerMessage.includes('thanks') || lowerMessage.includes('thank you')) return 'gratitude';
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('assalam')) return 'greeting';
+    if (lowerMessage.includes('yes') || lowerMessage.includes('no')) return 'confirmation';
+    
+    return 'statement';
+  }
+
+  /**
+   * Extract topics from message
+   * @param {string} message - User message
+   * @returns {Array} Array of topics
+   */
+  extractTopics(message) {
+    const topics = [];
+    const lowerMessage = message.toLowerCase();
+    
+    // Islamic topics
+    if (lowerMessage.includes('quran') || lowerMessage.includes('surah') || lowerMessage.includes('ayah')) {
+      topics.push('quran');
+    }
+    if (lowerMessage.includes('hadith') || lowerMessage.includes('sunnah') || lowerMessage.includes('prophet')) {
+      topics.push('hadith');
+    }
+    if (lowerMessage.includes('prayer') || lowerMessage.includes('namaz') || lowerMessage.includes('salah')) {
+      topics.push('prayer');
+    }
+    if (lowerMessage.includes('fasting') || lowerMessage.includes('roza') || lowerMessage.includes('ramadan')) {
+      topics.push('fasting');
+    }
+    if (lowerMessage.includes('zakat') || lowerMessage.includes('charity')) {
+      topics.push('zakat');
+    }
+    if (lowerMessage.includes('hajj') || lowerMessage.includes('pilgrimage')) {
+      topics.push('hajj');
+    }
+    if (lowerMessage.includes('family') || lowerMessage.includes('children') || lowerMessage.includes('parents')) {
+      topics.push('family');
+    }
+    
+    return topics.length > 0 ? topics : ['general'];
+  }
+
+  /**
+   * Classify question type
+   * @param {string} message - User message
+   * @returns {string} Question type
+   */
+  classifyQuestionType(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('what')) return 'what';
+    if (lowerMessage.includes('why')) return 'why';
+    if (lowerMessage.includes('how')) return 'how';
+    if (lowerMessage.includes('when')) return 'when';
+    if (lowerMessage.includes('where')) return 'where';
+    if (lowerMessage.includes('who')) return 'who';
+    
+    return 'other';
+  }
+
+  /**
+   * Get dominant element in array
+   * @param {Array} array - Input array
+   * @returns {*} Dominant element
+   */
+  getDominantElement(array) {
+    if (array.length === 0) return null;
+    
+    const frequency = {};
+    let maxFreq = 0;
+    let dominant = array[0];
+    
+    for (const element of array) {
+      frequency[element] = (frequency[element] || 0) + 1;
+      if (frequency[element] > maxFreq) {
+        maxFreq = frequency[element];
+        dominant = element;
+      }
+    }
+    
+    return dominant;
+  }
+
+  /**
+   * Determine interaction style based on session history
+   * @param {Object} sessionHistory - Session history data
+   * @returns {string} Interaction style
+   */
+  determineInteractionStyle(sessionHistory) {
+    // Analyze message frequency
+    if (sessionHistory.messageFrequency > 5) return 'rapid';
+    if (sessionHistory.messageFrequency > 2) return 'moderate';
+    return 'slow';
+    
+    // Could be enhanced with more sophisticated analysis
+  }
+
+  /**
+   * Estimate user's learning speed
+   * @param {Object} sessionHistory - Session history data
+   * @returns {string} Learning speed category
+   */
+  estimateLearningSpeed(sessionHistory) {
+    // Simple estimation based on topic variety and question patterns
+    const topicVariety = sessionHistory.preferredTopics.size;
+    const questionVariety = new Set(sessionHistory.questionPatterns).size;
+    
+    if (topicVariety > 3 && questionVariety > 2) return 'fast';
+    if (topicVariety > 1 && questionVariety > 1) return 'moderate';
+    return 'slow';
   }
 
 }

@@ -341,12 +341,12 @@ export class D1MemoryManager {
     // For now, create a simple summary by extracting key points
     // In a production environment, this would use an AI model to generate a proper summary
     const userMessages = conversationHistory
-      .filter(msg => msg.role === 'user')
+      .filter(msg => msg.role === 'user' && msg.content)
       .map(msg => msg.content)
       .slice(-5); // Last 5 user messages
       
     const aiMessages = conversationHistory
-      .filter(msg => msg.role === 'assistant')
+      .filter(msg => msg.role === 'assistant' && msg.content)
       .map(msg => msg.content)
       .slice(-5); // Last 5 AI responses
       

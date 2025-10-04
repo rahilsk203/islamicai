@@ -1336,7 +1336,10 @@ export default {
       });
     }
 
-    // Apply adaptive language learning and detection
+    // Get session data for context analysis
+    const sessionData = await sessionManager.getSessionData(sessionId);
+    
+    // NEW: Enhanced adaptive language learning with behavior analysis
     const languageAdaptation = adaptiveLanguageSystem.adaptLanguage(userMessage, sessionId, {
       previousMessages: await sessionManager.getRecentMessages(sessionId, 5),
       userProfile: await sessionManager.getUserProfile(sessionId),
@@ -1359,14 +1362,14 @@ export default {
     }
 
     // Get session data for context analysis
-    const sessionData = await sessionManager.getSessionData(sessionId);
+    const sessionDataForContext = await sessionManager.getSessionData(sessionId);
     
-    // DSA-based intelligent context integration
-    // Prioritize responding based on the user's current message
+    // NEW: Enhanced DSA-based intelligent context integration with behavioral patterns
+    // Prioritize responding based on the user's current message and behavior patterns
     // Only integrate past context when there's contextual or logical connection
     let contextualPrompt = islamicPrompt.getContextIntegratedPrompt(
       userMessage,
-      sessionData.history || [], // Past context from session history
+      sessionDataForContext.history || [], // Past context from session history
       languageAdaptation // Pass language preferences
     );
 
@@ -1382,6 +1385,7 @@ export default {
     let userPreferences = null;
     let recentSummaries = [];
     let userProfile = null;
+    let behavioralInsights = null; // NEW: Store behavioral insights
     
     // Only load personalized data for authenticated users
     if (authedUserId) {
@@ -1391,6 +1395,12 @@ export default {
         userPreferences = await d1.getPreferences(authedUserId);
         recentSummaries = await d1.getRecentSummaries(authedUserId, 3);
         userProfile = await d1.getUserProfile(authedUserId);
+        
+        // NEW: Get behavioral insights from session data
+        const sessionInfo = await sessionManager.getRecentMessages(sessionId, 10);
+        if (sessionInfo.behaviorPatterns) {
+          behavioralInsights = sessionInfo.behaviorPatterns;
+        }
         
         // Use user's language preference from request body if provided, otherwise use stored preference
         const effectiveLanguage = userLanguagePreference || (userPreferences ? userPreferences.language : null);
@@ -1406,6 +1416,23 @@ export default {
         }
         if (recentSummaries.length) {
           contextualPrompt += `\nRecent discussion summaries: ${recentSummaries.map(s => `- ${s}`).join(' ')}`;
+        }
+        
+        // NEW: Add behavioral insights to contextual prompt
+        if (behavioralInsights) {
+          contextualPrompt += `\n\n**User Behavior Insights:**`;
+          contextualPrompt += `\n- Preferred response length: ${behavioralInsights.responsePreferences.lengthPreference || 'balanced'}`;
+          contextualPrompt += `\n- Detail level preference: ${behavioralInsights.responsePreferences.detailLevel || 'moderate'}`;
+          contextualPrompt += `\n- Example preference: ${behavioralInsights.responsePreferences.examplePreference ? 'Yes' : 'No'}`;
+          contextualPrompt += `\n- Dominant interaction style: ${behavioralInsights.dominantInteractionStyle || 'standard'}`;
+          contextualPrompt += `\n- Learning adaptability score: ${behavioralInsights.learningAdaptability ? behavioralInsights.learningAdaptability.toFixed(2) : 'N/A'}`;
+          
+          // Add topic interests
+          if (behavioralInsights.topicInterests && Object.keys(behavioralInsights.topicInterests).length > 0) {
+            contextualPrompt += `\n- Topic interests: ${Object.entries(behavioralInsights.topicInterests)
+              .map(([topic, interest]) => `${topic} (${interest})`)
+              .join(', ')}`;
+          }
         }
       } catch (e) {
         console.log('D1 recall failed:', e.message);
@@ -1460,6 +1487,46 @@ export default {
         case 'contextual_consistency':
           contextualPrompt += '\n\n**Conversation Context**: Maintain contextual consistency with the ongoing conversation flow.';
           break;
+      }
+    }
+
+    // NEW: Add behavioral pattern instructions to contextual prompt
+    if (languageAdaptation.learningData && languageAdaptation.learningData.behaviorPatterns) {
+      const behavior = languageAdaptation.learningData.behaviorPatterns;
+      contextualPrompt += '\n\n**Behavioral Response Guidance:**';
+      
+      // Adjust response based on user's interaction style
+      switch (behavior.dominantInteractionStyle) {
+        case 'polite':
+          contextualPrompt += '\n- Respond in a respectful and courteous manner.';
+          break;
+        case 'urgent':
+          contextualPrompt += '\n- Provide concise and direct responses.';
+          break;
+        case 'direct':
+          contextualPrompt += '\n- Be straightforward and to the point.';
+          break;
+        default:
+          contextualPrompt += '\n- Maintain a balanced and natural conversational tone.';
+      }
+      
+      // Adjust response based on complexity preference
+      switch (behavior.complexityPreference) {
+        case 'prefers_simple':
+          contextualPrompt += '\n- Use simple language and avoid complex terminology.';
+          break;
+        case 'prefers_complex':
+          contextualPrompt += '\n- Provide detailed explanations with scholarly depth.';
+          break;
+        default:
+          contextualPrompt += '\n- Use a balanced approach with appropriate detail level.';
+      }
+      
+      // Adjust response based on learning adaptability
+      if (behavior.learningAdaptability > 0.7) {
+        contextualPrompt += '\n- User shows high learning adaptability. Introduce new concepts when relevant.';
+      } else if (behavior.learningAdaptability < 0.3) {
+        contextualPrompt += '\n- User may need more foundational explanations. Avoid overly complex concepts.';
       }
     }
 

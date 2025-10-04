@@ -198,21 +198,25 @@ export class PrivacyFilter {
     
     // Sanitize nested objects
     if (sanitized.history) {
-      sanitized.history = sanitized.history.map(msg => ({
-        role: msg.role,
-        content: this.filterResponse(msg.content),
-        timestamp: msg.timestamp
-      }));
+      sanitized.history = sanitized.history
+        .filter(msg => msg.content) // Filter out messages without content
+        .map(msg => ({
+          role: msg.role,
+          content: this.filterResponse(msg.content),
+          timestamp: msg.timestamp
+        }));
     }
     
     if (sanitized.memories) {
-      sanitized.memories = sanitized.memories.map(memory => ({
-        id: memory.id,
-        content: this.filterResponse(memory.content),
-        type: memory.type,
-        priority: memory.priority,
-        timestamp: memory.timestamp
-      }));
+      sanitized.memories = sanitized.memories
+        .filter(memory => memory.content) // Filter out memories without content
+        .map(memory => ({
+          id: memory.id,
+          content: this.filterResponse(memory.content),
+          type: memory.type,
+          priority: memory.priority,
+          timestamp: memory.timestamp
+        }));
     }
     
     return sanitized;

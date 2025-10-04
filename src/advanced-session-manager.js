@@ -41,6 +41,21 @@ export class AdvancedSessionManager {
       family: /(maa|papa|bhai|sister|family|ghar|home)/i,
       health: /(thik|fine|well|sick|ill|bimar)/i
     };
+    
+    // Enhanced session tracking for user behavior patterns
+    this.userBehaviorTracking = {
+      interactionPatterns: new Map(), // Tracks user interaction patterns per session
+      responsePreferences: new Map(), // Tracks user response preferences
+      topicInterests: new Map(), // Tracks user's topic interests
+      learningProgress: new Map() // Tracks user's learning progress
+    };
+    
+    // Session analytics
+    this.sessionAnalytics = {
+      averageSessionLength: 0,
+      commonSessionTimes: [], // Tracks when users typically interact
+      sessionIntervals: [] // Tracks time between sessions
+    };
   }
 
   // Simplified cache management
@@ -52,7 +67,11 @@ export class AdvancedSessionManager {
     }
   }
 
-  // Simplified session data retrieval for better performance
+  /**
+   * Enhanced session data retrieval with behavior tracking
+   * @param {string} sessionId - Session identifier
+   * @returns {Object} Enhanced session data
+   */
   async getSessionData(sessionId) {
     try {
       // Check cache first
@@ -85,7 +104,28 @@ export class AdvancedSessionManager {
       conversationContext: {},
       lastActivity: new Date().toISOString(),
       conversationFlow: [],
-      accessPattern: []
+      accessPattern: [],
+      // Enhanced behavior tracking fields
+      interactionPatterns: {
+        messageFrequency: [], // Timestamps of messages
+        responsePreferences: {
+          lengthPreference: 'balanced', // 'brief', 'detailed', 'balanced'
+          detailLevel: 'moderate', // 'basic', 'intermediate', 'advanced'
+          examplePreference: true // Whether user prefers examples
+        },
+        topicInterests: {}, // Topic -> interest level mapping
+        learningProgress: {
+          topicsLearned: [], // Topics user has engaged with
+          comprehensionLevel: 'beginner', // 'beginner', 'intermediate', 'advanced'
+          questionComplexity: 'simple' // 'simple', 'moderate', 'complex'
+        }
+      },
+      sessionMetrics: {
+        startTime: new Date().toISOString(),
+        messageCount: 0,
+        averageResponseTime: 0,
+        sessionDuration: 0
+      }
     };
   }
 
@@ -154,7 +194,10 @@ export class AdvancedSessionManager {
       const recentHistory = sessionData.history.slice(-2);
       recentHistory.forEach(msg => {
         const role = msg.role === 'user' ? 'User' : 'IslamicAI';
-        contextualPrompt += `${role}: ${msg.content}\n`;
+        // Check if message has content before accessing it
+        if (msg.content) {
+          contextualPrompt += `${role}: ${msg.content}\n`;
+        }
       });
       
       // Add instruction to maintain conversation context
@@ -181,9 +224,12 @@ export class AdvancedSessionManager {
       // Only include memories if they are highly relevant to current query
       if (relevantMemories.length > 0) {
         contextualPrompt += '\n**Highly Relevant Context:**\n';
-      relevantMemories.forEach(memory => {
-        contextualPrompt += `- ${memory.content}\n`;
-      });
+        relevantMemories.forEach(memory => {
+          // Check if memory has content before accessing it
+          if (memory.content) {
+            contextualPrompt += `- ${memory.content}\n`;
+          }
+        });
       }
     }
     
@@ -245,50 +291,7 @@ export class AdvancedSessionManager {
   }
 
   /**
-   * Get recent messages for adaptive language system with DSA optimization
-   * @param {string} sessionId - Session identifier
-   * @param {number} limit - Number of recent messages to retrieve
-   * @returns {Array} Recent messages
-   */
-  async getRecentMessages(sessionId, limit = 5) {
-    try {
-      // DSA: Use cache for O(1) access when possible
-      if (this.sessionCache.has(sessionId)) {
-        const sessionData = this.sessionCache.get(sessionId);
-        return sessionData.history.slice(-limit);
-      }
-      
-      const sessionData = await this.getSessionData(sessionId);
-      return sessionData.history.slice(-limit);
-    } catch (error) {
-      console.error('Error getting recent messages:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get user profile for adaptive language system with DSA optimization
-   * @param {string} sessionId - Session identifier
-   * @returns {Object} User profile
-   */
-  async getUserProfile(sessionId) {
-    try {
-      // DSA: Use cache for O(1) access when possible
-      if (this.sessionCache.has(sessionId)) {
-        const sessionData = this.sessionCache.get(sessionId);
-        return sessionData.userProfile || {};
-      }
-      
-      const sessionData = await this.getSessionData(sessionId);
-      return sessionData.userProfile || {};
-    } catch (error) {
-      console.error('Error getting user profile:', error);
-      return {};
-    }
-  }
-
-  /**
-   * Process a message and update session data
+   * Enhanced message processing with behavior pattern analysis
    * @param {string} sessionId - Session identifier
    * @param {string} userMessage - User message
    * @param {string} aiResponse - AI response
@@ -318,6 +321,12 @@ export class AdvancedSessionManager {
         sessionData.history = sessionData.history.slice(-this.maxHistoryLength);
       }
       
+      // Update session metrics
+      this._updateSessionMetrics(sessionData, userMessage, aiResponse);
+      
+      // Analyze user behavior patterns
+      this._analyzeUserBehaviorPatterns(sessionData, userMessage, aiResponse);
+      
       // Update user profile with interaction data
       if (!sessionData.userProfile) {
         sessionData.userProfile = {};
@@ -337,10 +346,394 @@ export class AdvancedSessionManager {
         history: [],
         memories: [],
         userProfile: {},
-        conversationContext: {}
+        conversationContext: {},
+        interactionPatterns: {
+          messageFrequency: [],
+          responsePreferences: {
+            lengthPreference: 'balanced',
+            detailLevel: 'moderate',
+            examplePreference: true
+          },
+          topicInterests: {},
+          learningProgress: {
+            topicsLearned: [],
+            comprehensionLevel: 'beginner',
+            questionComplexity: 'simple'
+          }
+        },
+        sessionMetrics: {
+          startTime: new Date().toISOString(),
+          messageCount: 0,
+          averageResponseTime: 0,
+          sessionDuration: 0
+        }
       };
     }
   }
+
+  /**
+   * Update session metrics
+   * @param {Object} sessionData - Session data
+   * @param {string} userMessage - User message
+   * @param {string} aiResponse - AI response
+   * @private
+   */
+  _updateSessionMetrics(sessionData, userMessage, aiResponse) {
+    const now = Date.now();
+    
+    // Ensure sessionMetrics exists
+    if (!sessionData.sessionMetrics) {
+      sessionData.sessionMetrics = {
+        startTime: new Date().toISOString(),
+        messageCount: 0,
+        averageResponseTime: 0,
+        sessionDuration: 0
+      };
+    }
+    
+    // Update message count
+    sessionData.sessionMetrics.messageCount += 2; // User message + AI response
+    
+    // Update session duration
+    const sessionStart = new Date(sessionData.sessionMetrics.startTime).getTime();
+    sessionData.sessionMetrics.sessionDuration = now - sessionStart;
+    
+    // Update message frequency tracking
+    if (!sessionData.interactionPatterns) {
+      sessionData.interactionPatterns = {
+        messageFrequency: [],
+        responsePreferences: {
+          lengthPreference: 'balanced',
+          detailLevel: 'moderate',
+          examplePreference: true
+        },
+        topicInterests: {},
+        learningProgress: {
+          topicsLearned: [],
+          comprehensionLevel: 'beginner',
+          questionComplexity: 'simple'
+        }
+      };
+    }
+    
+    sessionData.interactionPatterns.messageFrequency.push(now);
+    
+    // Update average response time if we have previous messages
+    if (sessionData.history.length >= 2) {
+      const lastUserMessage = sessionData.history[sessionData.history.length - 2];
+      const responseTime = now - new Date(lastUserMessage.timestamp).getTime();
+      
+      if (sessionData.sessionMetrics.averageResponseTime === 0) {
+        sessionData.sessionMetrics.averageResponseTime = responseTime;
+      } else {
+        // Rolling average
+        sessionData.sessionMetrics.averageResponseTime = 
+          (sessionData.sessionMetrics.averageResponseTime * (sessionData.history.length/2 - 1) + responseTime) / (sessionData.history.length/2);
+      }
+    }
+  }
+
+  /**
+   * Analyze user behavior patterns from interaction
+   * @param {Object} sessionData - Session data
+   * @param {string} userMessage - User message
+   * @param {string} aiResponse - AI response
+   * @private
+   */
+  _analyzeUserBehaviorPatterns(sessionData, userMessage, aiResponse) {
+    // Ensure interactionPatterns exists
+    if (!sessionData.interactionPatterns) {
+      sessionData.interactionPatterns = {
+        messageFrequency: [],
+        responsePreferences: {
+          lengthPreference: 'balanced',
+          detailLevel: 'moderate',
+          examplePreference: true
+        },
+        topicInterests: {},
+        learningProgress: {
+          topicsLearned: [],
+          comprehensionLevel: 'beginner',
+          questionComplexity: 'simple'
+        }
+      };
+    }
+    
+    const interactionPatterns = sessionData.interactionPatterns;
+    const lowerUserMessage = userMessage.toLowerCase();
+    
+    // Analyze response preferences
+    this._analyzeResponsePreferences(interactionPatterns.responsePreferences, userMessage, aiResponse);
+    
+    // Analyze topic interests
+    this._analyzeTopicInterests(interactionPatterns.topicInterests, userMessage);
+    
+    // Analyze learning progress
+    this._analyzeLearningProgress(interactionPatterns.learningProgress, userMessage, sessionData.history);
+  }
+
+  /**
+   * Analyze user response preferences
+   * @param {Object} responsePreferences - Response preferences object
+   * @param {string} userMessage - User message
+   * @param {string} aiResponse - AI response
+   * @private
+   */
+  _analyzeResponsePreferences(responsePreferences, userMessage, aiResponse) {
+    // Analyze length preference
+    if (userMessage.includes('brief') || userMessage.includes('short') || userMessage.includes('concise')) {
+      responsePreferences.lengthPreference = 'brief';
+    } else if (userMessage.includes('detailed') || userMessage.includes('explain more') || userMessage.includes('in detail')) {
+      responsePreferences.lengthPreference = 'detailed';
+    }
+    
+    // Analyze detail level preference
+    if (userMessage.includes('simple') || userMessage.includes('basic')) {
+      responsePreferences.detailLevel = 'basic';
+    } else if (userMessage.includes('advanced') || userMessage.includes('complex')) {
+      responsePreferences.detailLevel = 'advanced';
+    }
+    
+    // Analyze example preference
+    if (userMessage.includes('example') || userMessage.includes('for example') || userMessage.includes('like')) {
+      responsePreferences.examplePreference = true;
+    } else if (userMessage.includes('no example') || userMessage.includes('don\'t need example')) {
+      responsePreferences.examplePreference = false;
+    }
+  }
+
+  /**
+   * Analyze user topic interests
+   * @param {Object} topicInterests - Topic interests object
+   * @param {string} userMessage - User message
+   * @private
+   */
+  _analyzeTopicInterests(topicInterests, userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    const topics = [
+      { name: 'quran', keywords: ['quran', 'surah', 'ayah', 'verse'] },
+      { name: 'hadith', keywords: ['hadith', 'sunnah', 'prophet', 'sahih'] },
+      { name: 'fiqh', keywords: ['fiqh', 'halal', 'haram', 'ruling'] },
+      { name: 'seerah', keywords: ['seerah', 'history', 'prophet muhammad'] },
+      { name: 'spirituality', keywords: ['iman', 'faith', 'taqwa', 'repentance'] },
+      { name: 'prayer', keywords: ['prayer', 'namaz', 'salah', 'wudu'] },
+      { name: 'fasting', keywords: ['fasting', 'roza', 'ramadan'] },
+      { name: 'zakat', keywords: ['zakat', 'charity'] },
+      { name: 'hajj', keywords: ['hajj', 'pilgrimage'] },
+      { name: 'ethics', keywords: ['ethics', 'morals', 'character'] },
+      { name: 'family', keywords: ['family', 'children', 'parent', 'marriage'] },
+      { name: 'business', keywords: ['business', 'trade', 'investment'] }
+    ];
+    
+    topics.forEach(topic => {
+      const hasInterest = topic.keywords.some(keyword => lowerMessage.includes(keyword));
+      if (hasInterest) {
+        // Increment interest level or set to 1 if not exists
+        topicInterests[topic.name] = (topicInterests[topic.name] || 0) + 1;
+      }
+    });
+  }
+
+  /**
+   * Analyze user learning progress
+   * @param {Object} learningProgress - Learning progress object
+   * @param {string} userMessage - User message
+   * @param {Array} history - Conversation history
+   * @private
+   */
+  _analyzeLearningProgress(learningProgress, userMessage, history) {
+    // Ensure learningProgress has required properties
+    if (!learningProgress.topicsLearned) {
+      learningProgress.topicsLearned = [];
+    }
+    if (!learningProgress.questionComplexity) {
+      learningProgress.questionComplexity = 'simple';
+    }
+    if (!learningProgress.comprehensionLevel) {
+      learningProgress.comprehensionLevel = 'beginner';
+    }
+    
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // Identify topics in current message
+    const currentTopics = Object.keys(learningProgress.topicsLearned).filter(topic => 
+      userMessage.toLowerCase().includes(topic)
+    );
+    
+    // Add new topics to learned topics
+    currentTopics.forEach(topic => {
+      if (!learningProgress.topicsLearned.includes(topic)) {
+        learningProgress.topicsLearned.push(topic);
+      }
+    });
+    
+    // Analyze question complexity
+    if (lowerMessage.includes('what is') || lowerMessage.includes('who is') || lowerMessage.includes('when')) {
+      learningProgress.questionComplexity = 'simple';
+    } else if (lowerMessage.includes('how') || lowerMessage.includes('why') || lowerMessage.includes('explain')) {
+      learningProgress.questionComplexity = 'moderate';
+    } else if (lowerMessage.includes('compare') || lowerMessage.includes('analyze') || lowerMessage.includes('evaluate')) {
+      learningProgress.questionComplexity = 'complex';
+    }
+    
+    // Update comprehension level based on conversation depth
+    if (history.length > 10) {
+      learningProgress.comprehensionLevel = 'intermediate';
+    }
+    if (history.length > 20) {
+      learningProgress.comprehensionLevel = 'advanced';
+    }
+  }
+
+  /**
+   * Get enhanced recent messages with behavior analysis
+   * @param {string} sessionId - Session identifier
+   * @param {number} limit - Number of recent messages to retrieve
+   * @returns {Array} Recent messages with behavior metadata
+   */
+  async getRecentMessages(sessionId, limit = 5) {
+    try {
+      // DSA: Use cache for O(1) access when possible
+      if (this.sessionCache.has(sessionId)) {
+        const sessionData = this.sessionCache.get(sessionId);
+        // Ensure required properties exist
+        if (!sessionData.interactionPatterns) {
+          sessionData.interactionPatterns = {
+            messageFrequency: [],
+            responsePreferences: {
+              lengthPreference: 'balanced',
+              detailLevel: 'moderate',
+              examplePreference: true
+            },
+            topicInterests: {},
+            learningProgress: {
+              topicsLearned: [],
+              comprehensionLevel: 'beginner',
+              questionComplexity: 'simple'
+            }
+          };
+        }
+        if (!sessionData.sessionMetrics) {
+          sessionData.sessionMetrics = {
+            startTime: new Date().toISOString(),
+            messageCount: 0,
+            averageResponseTime: 0,
+            sessionDuration: 0
+          };
+        }
+        // Return messages with behavior analysis
+        return {
+          messages: sessionData.history.slice(-limit),
+          behaviorPatterns: sessionData.interactionPatterns,
+          sessionMetrics: sessionData.sessionMetrics
+        };
+      }
+      
+      const sessionData = await this.getSessionData(sessionId);
+      // Ensure required properties exist
+      if (!sessionData.interactionPatterns) {
+        sessionData.interactionPatterns = {
+          messageFrequency: [],
+          responsePreferences: {
+            lengthPreference: 'balanced',
+            detailLevel: 'moderate',
+            examplePreference: true
+          },
+          topicInterests: {},
+          learningProgress: {
+            topicsLearned: [],
+            comprehensionLevel: 'beginner',
+            questionComplexity: 'simple'
+          }
+        };
+      }
+      if (!sessionData.sessionMetrics) {
+        sessionData.sessionMetrics = {
+          startTime: new Date().toISOString(),
+          messageCount: 0,
+          averageResponseTime: 0,
+          sessionDuration: 0
+        };
+      }
+      return {
+        messages: sessionData.history.slice(-limit),
+        behaviorPatterns: sessionData.interactionPatterns,
+        sessionMetrics: sessionData.sessionMetrics
+      };
+    } catch (error) {
+      console.error('Error getting recent messages:', error);
+      return {
+        messages: [],
+        behaviorPatterns: null,
+        sessionMetrics: null
+      };
+    }
+  }
+
+  /**
+   * Get enhanced user profile with behavior insights
+   * @param {string} sessionId - Session identifier
+   * @returns {Object} Enhanced user profile
+   */
+  async getUserProfile(sessionId) {
+    try {
+      // DSA: Use cache for O(1) access when possible
+      if (this.sessionCache.has(sessionId)) {
+        const sessionData = this.sessionCache.get(sessionId);
+        // Ensure interactionPatterns exists
+        if (!sessionData.interactionPatterns) {
+          sessionData.interactionPatterns = {
+            messageFrequency: [],
+            responsePreferences: {
+              lengthPreference: 'balanced',
+              detailLevel: 'moderate',
+              examplePreference: true
+            },
+            topicInterests: {},
+            learningProgress: {
+              topicsLearned: [],
+              comprehensionLevel: 'beginner',
+              questionComplexity: 'simple'
+            }
+          };
+        }
+        return {
+          ...sessionData.userProfile,
+          behaviorInsights: sessionData.interactionPatterns
+        };
+      }
+      
+      const sessionData = await this.getSessionData(sessionId);
+      // Ensure interactionPatterns exists
+      if (!sessionData.interactionPatterns) {
+        sessionData.interactionPatterns = {
+          messageFrequency: [],
+          responsePreferences: {
+            lengthPreference: 'balanced',
+            detailLevel: 'moderate',
+            examplePreference: true
+          },
+          topicInterests: {},
+          learningProgress: {
+            topicsLearned: [],
+            comprehensionLevel: 'beginner',
+            questionComplexity: 'simple'
+          }
+        };
+      }
+      return {
+        ...sessionData.userProfile,
+        behaviorInsights: sessionData.interactionPatterns
+      };
+    } catch (error) {
+      console.error('Error getting user profile:', error);
+      return {
+        behaviorInsights: null
+      };
+    }
+  }
+
+
 
   /**
    * Build base prompt with user profile information
@@ -444,7 +837,7 @@ export class AdvancedSessionManager {
     const olderMessages = sessionHistory.slice(0, -10);
     const topics = this.memory.extractIslamicTopics(
       olderMessages
-        .filter(msg => msg.role === 'user')
+        .filter(msg => msg.role === 'user' && msg.content)
         .map(msg => msg.content)
         .join(' ')
     );

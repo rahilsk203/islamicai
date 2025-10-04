@@ -764,7 +764,7 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
   }
   
   /**
-   * Get context-integrated prompt with intelligent prioritization
+   * Get context-integrated prompt with intelligent prioritization and behavioral insights
    * @param {string} currentMessage - Current user message
    * @param {Array} pastContext - Array of past context items
    * @param {Object} languagePreferences - User's language preferences
@@ -812,6 +812,23 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
     prompt += '\n- For Seerah questions, connect historical events to contemporary lessons';
     prompt += '\n- For spiritual development, emphasize the connection between actions and spiritual growth';
     prompt += '\n- For contemporary issues, ground solutions in Islamic principles while addressing modern contexts';
+    
+    // NEW: Add behavioral adaptation instructions
+    prompt += '\n\n**BEHAVIORAL ADAPTATION INSTRUCTIONS:**';
+    prompt += '\n- Adapt response style based on user\'s interaction patterns and preferences';
+    prompt += '\n- Adjust complexity level according to user\'s learning progress';
+    prompt += '\n- Match the user\'s communication style (formal, casual, direct, etc.)';
+    prompt += '\n- Provide examples when user prefers them, avoid when they don\'t';
+    prompt += '\n- Respond with appropriate emotional tone based on user\'s emotional context';
+    prompt += '\n- Maintain consistency with previously identified user preferences';
+    
+    // NEW: Add learning progression guidance
+    prompt += '\n\n**LEARNING PROGRESSION GUIDANCE:**';
+    prompt += '\n- For beginners, provide foundational explanations and avoid complex terminology';
+    prompt += '\n- For intermediate learners, build upon existing knowledge with deeper insights';
+    prompt += '\n- For advanced learners, offer scholarly perspectives and nuanced discussions';
+    prompt += '\n- Recognize when to scaffold learning versus when to challenge understanding';
+    prompt += '\n- Acknowledge user\'s progress and encourage continued learning';
     
     return prompt;
   }
