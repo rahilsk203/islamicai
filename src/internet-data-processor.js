@@ -252,7 +252,9 @@ export class InternetDataProcessor {
       'concept of', 'concept', 'what is tawhid', 'what is tauhid', 'what is iman',
       'what is islam', 'pillars of', 'five pillars', 'six articles', 'articles of faith',
       'life of prophet', 'prophet muhammad', 'seerah', 'history of', 'story of',
-      'teachings of', 'principles of', 'fundamentals of', 'basics of', 'introduction to'
+      'teachings of', 'principles of', 'fundamentals of', 'basics of', 'introduction to',
+      'quran verse', 'quran translation', 'quran meaning', 'surah', 'ayah',
+      'hadith about', 'prophet said', 'sunnah of', 'sunnah', 'hadith meaning'
     ];
     
     // Check if this is a general Islamic knowledge query
@@ -284,6 +286,8 @@ export class InternetDataProcessor {
       // Weather
       'weather today', 'current weather', 'temperature today',
       'weather forecast', 'rain today', 'sunny today',
+      // Multi-language weather terms
+      'موسم', 'मौसम', 'clima', 'météo', 'wetter',
       
       // Technology
       'latest technology', 'new technology', 'tech news', 'latest gadgets',
@@ -319,7 +323,12 @@ export class InternetDataProcessor {
       
       // Time-sensitive queries
       'today', 'now', 'current', 'latest', 'recent', '2024', '2025',
-      'bataa', 'batao', 'bata', 'kya hai', 'kya ho raha', 'kya chal raha'
+      'bataa', 'batao', 'bata', 'kya hai', 'kya ho raha', 'kya chal raha',
+      
+      // Multi-language time-sensitive queries
+      'आज', 'अभी', 'वर्तमान', 'नवीनतम', 'हाल ही में',
+      'اليوم', 'الآن', 'الحالي', 'الأحدث', 'حديثاً',
+      'aujourd\'hui', 'maintenant', 'actuel', 'dernier'
     ];
     
     // Special handling for prayer times - these always need current data
@@ -328,14 +337,25 @@ export class InternetDataProcessor {
       'fajr', 'dhuhr', 'asr', 'maghrib', 'isha',
       'salah time', 'prayer times today', 'when is',
       'azaan', 'adhan', 'iqamah',
-      'next prayer', 'current prayer', 'prayer for today'
+      'next prayer', 'current prayer', 'prayer for today',
+      // Multi-language prayer time queries
+      'नमाज का समय', 'फजर का समय', 'जोहर का समय', 'असर का समय', 'मगरिब का समय', 'इशा का समय',
+      'नमाज़ का समय', 'फज़र का समय', 'जोहर का समय', 'असर का समय', 'मगरिब का समय', 'इशा का समय',
+      'اَذَان', 'نماز', 'فجر', 'ظهر', 'عصر', 'مغرب', 'عشاء',
+      'أوقات الصلاة', 'جدول الصلاة', 'موعد الصلاة'
     ];
     
     // Check if any general trigger is present
-    const hasGeneralTrigger = searchTriggers.some(trigger => lowerMessage.includes(trigger));
+    const hasGeneralTrigger = searchTriggers.some(trigger => 
+      lowerMessage.includes(trigger) || 
+      userMessage.includes(trigger) // Also check original case for non-English terms
+    );
     
     // Check if prayer time trigger is present
-    const hasPrayerTimeTrigger = prayerTimeTriggers.some(trigger => lowerMessage.includes(trigger));
+    const hasPrayerTimeTrigger = prayerTimeTriggers.some(trigger => 
+      lowerMessage.includes(trigger) || 
+      userMessage.includes(trigger) // Also check original case for non-English terms
+    );
     
     // Return true if either general trigger or prayer time trigger is present
     return hasGeneralTrigger || hasPrayerTimeTrigger;

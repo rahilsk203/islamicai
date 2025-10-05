@@ -1533,6 +1533,8 @@ export default {
     try {
       // Get location information early for context
       let locationInfo = null;
+      let prayerTimesInfo = null;
+      
       if (userIP && userIP !== 'unknown') {
         try {
           const { LocationPrayerService } = await import('./location-prayer-service.js');
@@ -1550,6 +1552,33 @@ export default {
             isDefault: location.isDefault || false
           };
           console.log('Location information retrieved:', locationInfo);
+          
+          // NEW: Get prayer times for the user's location if the query is about prayer times
+          const lowerUserMessage = userMessage.toLowerCase();
+          const prayerTimeKeywords = ['prayer time', 'namaz time', 'azaan time', 'prayer schedule', 
+                                    'fajr', 'dhuhr', 'asr', 'maghrib', 'isha', 'salah time', 
+                                    'prayer times today', 'when is', 'azaan', 'adhan', 'iqamah',
+                                    'next prayer', 'current prayer', 'prayer for today', 'namaz'];
+          
+          const isPrayerTimeQuery = prayerTimeKeywords.some(keyword => lowerUserMessage.includes(keyword));
+          
+          if (isPrayerTimeQuery) {
+            try {
+              const prayerTimes = await locationService.getPrayerTimes(location, new Date());
+              if (prayerTimes) {
+                prayerTimesInfo = {
+                  date: prayerTimes.date,
+                  location: prayerTimes.location,
+                  times: prayerTimes.times,
+                  timezone: prayerTimes.timezone,
+                  source: prayerTimes.source || 'calculated'
+                };
+                console.log('Prayer times retrieved:', prayerTimesInfo);
+              }
+            } catch (prayerError) {
+              console.log('Prayer time retrieval failed:', prayerError.message);
+            }
+          }
         } catch (error) {
           console.log('Location detection failed:', error.message);
           // Even if location detection fails, we still want to continue with the request
@@ -1572,6 +1601,33 @@ export default {
             isDefault: true
           };
           console.log('Default location information used:', locationInfo);
+          
+          // NEW: Get prayer times for default location if the query is about prayer times
+          const lowerUserMessage = userMessage.toLowerCase();
+          const prayerTimeKeywords = ['prayer time', 'namaz time', 'azaan time', 'prayer schedule', 
+                                    'fajr', 'dhuhr', 'asr', 'maghrib', 'isha', 'salah time', 
+                                    'prayer times today', 'when is', 'azaan', 'adhan', 'iqamah',
+                                    'next prayer', 'current prayer', 'prayer for today', 'namaz'];
+          
+          const isPrayerTimeQuery = prayerTimeKeywords.some(keyword => lowerUserMessage.includes(keyword));
+          
+          if (isPrayerTimeQuery) {
+            try {
+              const prayerTimes = await locationService.getPrayerTimes(defaultLocation, new Date());
+              if (prayerTimes) {
+                prayerTimesInfo = {
+                  date: prayerTimes.date,
+                  location: prayerTimes.location,
+                  times: prayerTimes.times,
+                  timezone: prayerTimes.timezone,
+                  source: prayerTimes.source || 'calculated'
+                };
+                console.log('Prayer times retrieved for default location:', prayerTimesInfo);
+              }
+            } catch (prayerError) {
+              console.log('Prayer time retrieval for default location failed:', prayerError.message);
+            }
+          }
         } catch (error) {
           console.log('Failed to get default location:', error.message);
         }
@@ -1590,6 +1646,7 @@ export default {
           sessionManager,
           userIP,
           locationInfo, // Pass location info to streaming handler
+          prayerTimesInfo, // Pass prayer times info to streaming handler
           privacyFilter, // Pass privacy filter to streaming handler
           origin // Pass origin to streaming handler
         );
@@ -1602,6 +1659,22 @@ export default {
           contextualPrompt
         }, userIP);
         
+        // Add prayer times information to the contextual prompt if available
+        if (prayerTimesInfo) {
+          contextualPrompt += `\n\n**Prayer Times Information:**`;
+          contextualPrompt += `\nLocation: ${prayerTimesInfo.location.city}, ${prayerTimesInfo.location.country}`;
+          contextualPrompt += `\nDate: ${prayerTimesInfo.date}`;
+          contextualPrompt += `\nFajr: ${prayerTimesInfo.times.fajr}`;
+          contextualPrompt += `\nSunrise: ${prayerTimesInfo.times.sunrise}`;
+          contextualPrompt += `\nDhuhr: ${prayerTimesInfo.times.dhuhr}`;
+          contextualPrompt += `\nAsr: ${prayerTimesInfo.times.asr}`;
+          contextualPrompt += `\nMaghrib: ${prayerTimesInfo.times.maghrib}`;
+          contextualPrompt += `\nIsha: ${prayerTimesInfo.times.isha}`;
+          contextualPrompt += `\nTimezone: ${prayerTimesInfo.timezone}`;
+          contextualPrompt += `\nSource: ${prayerTimesInfo.source === 'timesprayer.org' ? 'Accurate data from timesprayer.org' : 'Calculated based on astronomical calculations'}`;
+          contextualPrompt += `\n\nUse this information to provide accurate prayer times to the user in their preferred language.`;
+        }
+        
         // Call Gemini API with direct response, now including location context
         const geminiResponse = await geminiAPI.generateResponse(
           [], 
@@ -1611,7 +1684,8 @@ export default {
           enhancedLanguageInfo, 
           streamingOptions,
           userIP,
-          locationInfo // Pass location info to Gemini API
+          locationInfo, // Pass location info to Gemini API
+          prayerTimesInfo // Pass prayer times info to Gemini API
         );
         
         // Filter the response before sending to user
@@ -1663,6 +1737,7 @@ export default {
           language_info: enhancedLanguageInfo,
           internet_enhanced: true,
           location_info: locationInfo,
+          prayer_times_info: prayerTimesInfo, // Include prayer times info in response
           user_preferences: authedUserId ? userPreferences : null,
           user_profile_info: authedUserId ? userProfile : null,
           is_authenticated: !!authedUserId,
@@ -1720,6 +1795,7 @@ export default {
     sessionManager,
     userIP,
     locationInfo,
+    prayerTimesInfo,
     privacyFilter,
     origin
   ) {
@@ -1730,6 +1806,30 @@ export default {
         languageInfo: enhancedLanguageInfo,
         contextualPrompt
       }, userIP);
+      
+      // Add prayer times information to the contextual prompt if available
+      if (prayerTimesInfo) {
+        contextualPrompt += `\n\n**Prayer Times Information:**`;
+        contextualPrompt += `\nLocation: ${prayerTimesInfo.location.city}, ${prayerTimesInfo.location.country}`;
+        contextualPrompt += `\nDate: ${prayerTimesInfo.date}`;
+        contextualPrompt += `\nFajr: ${prayerTimesInfo.times.fajr}`;
+        contextualPrompt += `\nSunrise: ${prayerTimesInfo.times.sunrise}`;
+        contextualPrompt += `\nDhuhr: ${prayerTimesInfo.times.dhuhr}`;
+        contextualPrompt += `\nAsr: ${prayerTimesInfo.times.asr}`;
+        contextualPrompt += `\nMaghrib: ${prayerTimesInfo.times.maghrib}`;
+        contextualPrompt += `\nIsha: ${prayerTimesInfo.times.isha}`;
+        contextualPrompt += `\nTimezone: ${prayerTimesInfo.timezone}`;
+        contextualPrompt += `\nSource: ${prayerTimesInfo.source === 'timesprayer.org' ? 'Accurate data from timesprayer.org' : 'Calculated based on astronomical calculations'}`;
+        
+        // Add calculation method information
+        if (prayerTimesInfo.calculationMethod) {
+          contextualPrompt += `\nCalculation Method: ${prayerTimesInfo.calculationMethodName || prayerTimesInfo.calculationMethod}`;
+        }
+        
+        // Add note about variation in calculation methods
+        contextualPrompt += `\n\nNote: Prayer times can vary slightly based on different calculation methods used by various Islamic organizations. The times provided are based on the ${prayerTimesInfo.calculationMethodName || 'standard'} method.`;
+        contextualPrompt += `\n\nUse this information to provide accurate prayer times to the user in their preferred language, and mention that times may vary based on different calculation methods.`;
+      }
 
       // Call Gemini API with streaming response, now including location context
       const geminiResponse = await geminiAPI.generateResponse(
@@ -1740,7 +1840,8 @@ export default {
         enhancedLanguageInfo, 
         streamingOptions,
         userIP,
-        locationInfo // Pass location info to Gemini API
+        locationInfo, // Pass location info to Gemini API
+        prayerTimesInfo // Pass prayer times info to Gemini API
       );
 
       // For streaming responses, we don't filter until the end

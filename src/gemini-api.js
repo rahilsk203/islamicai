@@ -703,12 +703,11 @@ class GeminiAPI {
           }
         }
 
-        // Enhanced search instruction based on query type
-        const includeSearchInstruction = internetData && internetData.needsInternetData;
-        const requestBody = includeSearchInstruction ? {
-          ...requestBodyBase,
-          tools: [ { googleSearch: {} } ]
-        } : requestBodyBase;
+        // Enhanced search instruction based on query type and intelligent detection
+        const includeSearchInstruction = this._shouldIncludeSearchTools(userInput, internetData, queryType);
+        
+        // Enhanced request body with intelligent search tools inclusion
+        const requestBody = this._buildRequestBodyWithSearchTools(requestBodyBase, includeSearchInstruction, userInput, internetData);
 
         // DSA-Level optimized model selection
         const modelId = this._pickNextModelId();
@@ -726,6 +725,8 @@ class GeminiAPI {
           
           if (data.candidates && data.candidates[0] && data.candidates[0].content) {
             let responseText = '';
+            let groundingInfo = null;
+            
             try {
               const parts = data.candidates[0].content.parts;
               if (Array.isArray(parts) && parts[0] && typeof parts[0].text === 'string') {
@@ -733,10 +734,21 @@ class GeminiAPI {
               } else if (typeof data.candidates[0].content.text === 'string') {
                 responseText = data.candidates[0].content.text;
               }
+              
+              // Extract grounding metadata if present
+              if (data.candidates[0].groundingMetadata) {
+                groundingInfo = this._extractGroundingInfo(data.candidates[0].groundingMetadata);
+              }
             } catch {}
             
             // Enhanced post-processing with better formatting
             let finalText = this.postProcessResponse(responseText, queryType.topic, languageInfo);
+            
+            // If we have grounding information, we might want to enhance the response
+            if (groundingInfo && groundingInfo.sources.length > 0) {
+              // Add a note about the sources if this is a search-based response
+              finalText += `\n\n[This response is based on current information from web searches. Sources: ${groundingInfo.sources.slice(0, 3).map(s => s.title).join(', ')}]`;
+            }
             
             // Enhanced brevity control
             finalText = this._enforceBrevity(finalText, languageInfo.response_prefs?.maxSentences || 8);
@@ -1118,10 +1130,24 @@ ${languageInstruction}
               const jsonData = await response.json();
               const texts = this.extractTexts(jsonData);
               const combined = texts.join('');
+              
+              // Extract grounding metadata if present
+              let groundingInfo = null;
+              if (jsonData.candidates && jsonData.candidates[0] && jsonData.candidates[0].groundingMetadata) {
+                groundingInfo = this._extractGroundingInfo(jsonData.candidates[0].groundingMetadata);
+              }
+              
               if (includeMetadata) {
                 controller.enqueue(new TextEncoder().encode(this.createStreamingChunk({ type: 'start', content: '', metadata: { timestamp: new Date().toISOString() } })));
               }
               let finalText = this._enforceBrevity(this.postProcessResponse(combined, 'general', {}), 8);
+              
+              // If we have grounding information, we might want to enhance the response
+              if (groundingInfo && groundingInfo.sources.length > 0) {
+                // Add a note about the sources if this is a search-based response
+                finalText += `\n\n[This response is based on current information from web searches. Sources: ${groundingInfo.sources.slice(0, 3).map(s => s.title).join(', ')}]`;
+              }
+              
               controller.enqueue(new TextEncoder().encode(this.createStreamingChunk({ type: 'content', content: finalText, metadata: { timestamp: new Date().toISOString() } })));
               if (includeMetadata) {
                 controller.enqueue(new TextEncoder().encode(this.createStreamingChunk({ type: 'end', content: '', metadata: { completed: true, timestamp: new Date().toISOString() } })));
@@ -1185,8 +1211,21 @@ ${languageInstruction}
             const fallbackData = await this.makeAPIRequestWithRetry(requestBody);
             const texts = this.extractTexts(fallbackData);
             const combined = texts.join('');
+            
+            // Extract grounding metadata if present
+            let groundingInfo = null;
+            if (fallbackData.candidates && fallbackData.candidates[0] && fallbackData.candidates[0].groundingMetadata) {
+              groundingInfo = this._extractGroundingInfo(fallbackData.candidates[0].groundingMetadata);
+            }
+            
             if (combined) {
-              emitContent(combined);
+              let finalText = combined;
+              // If we have grounding information, we might want to enhance the response
+              if (groundingInfo && groundingInfo.sources.length > 0) {
+                // Add a note about the sources if this is a search-based response
+                finalText += `\n\n[This response is based on current information from web searches. Sources: ${groundingInfo.sources.slice(0, 3).map(s => s.title).join(', ')}]`;
+              }
+              emitContent(finalText);
             }
           }
 
@@ -1214,6 +1253,19 @@ ${languageInstruction}
         const parts = cand.content && cand.content.parts ? cand.content.parts : (cand.content ? [cand.content] : []);
         for (const p of parts) {
           if (typeof p.text === 'string') out.push(p.text);
+        }
+        
+        // Handle grounding metadata if present
+        if (cand.groundingMetadata) {
+          // Extract search queries used
+          if (cand.groundingMetadata.webSearchQueries && cand.groundingMetadata.webSearchQueries.length > 0) {
+            // We don't need to add this to the output as it's metadata
+          }
+          
+          // Extract grounding chunks (sources)
+          if (cand.groundingMetadata.groundingChunks && cand.groundingMetadata.groundingChunks.length > 0) {
+            // We could add source information here if needed
+          }
         }
       }
       if (typeof obj.text === 'string') out.push(obj.text);
@@ -1284,6 +1336,113 @@ ${languageInstruction}
 
   _putInCache(key, response, ttl = 300000) {
     this.responseCache.put(key, response, ttl);
+  }
+
+  /**
+   * Intelligent detection of when to include search tools
+   * @param {string} userInput - User's input
+   * @param {Object} internetData - Internet data processing result
+   * @param {Object} queryType - Query classification result
+   * @returns {boolean} Whether to include search tools
+   */
+  _shouldIncludeSearchTools(userInput, internetData, queryType) {
+    // Always include search tools if internet processor indicates need for internet data
+    if (internetData && internetData.needsInternetData) {
+      return true;
+    }
+    
+    // Include search tools for specific query types that benefit from current information
+    const searchBenefitQueryTypes = [
+      'current_events',
+      'breaking_news',
+      'financial_data',
+      'weather',
+      'prayer_times',
+      'islamic_calendar',
+      'ramadan_eid_dates',
+      'hajj_umrah_info'
+    ];
+    
+    if (queryType && searchBenefitQueryTypes.includes(queryType.topic)) {
+      return true;
+    }
+    
+    // Include search tools for location-based queries
+    if (this.isLocationBasedQuery(userInput)) {
+      return true;
+    }
+    
+    // Include search tools for time-sensitive queries
+    const timeSensitiveKeywords = [
+      'today', 'now', 'current', 'latest', 'recent', '2024', '2025',
+      'what time', 'what date', 'what day', 'what month', 'what year'
+    ];
+    
+    const lowerInput = userInput.toLowerCase();
+    if (timeSensitiveKeywords.some(keyword => lowerInput.includes(keyword))) {
+      return true;
+    }
+    
+    // Default to not including search tools for general knowledge queries
+    return false;
+  }
+
+  /**
+   * Build request body with intelligent search tools inclusion
+   * @param {Object} baseRequestBody - Base request body
+   * @param {boolean} includeSearchTools - Whether to include search tools
+   * @param {string} userInput - User's input
+   * @param {Object} internetData - Internet data processing result
+   * @returns {Object} Enhanced request body
+   */
+  _buildRequestBodyWithSearchTools(baseRequestBody, includeSearchTools, userInput, internetData) {
+    if (!includeSearchTools) {
+      return baseRequestBody;
+    }
+    
+    // Correct format for Google Search tool according to Gemini API documentation
+    const searchConfig = {
+      googleSearch: {}
+    };
+    
+    // Return request body with search tools
+    return {
+      ...baseRequestBody,
+      tools: [searchConfig]
+    };
+  }
+
+  /**
+   * Extract grounding information from grounding metadata
+   * @param {Object} groundingMetadata - Grounding metadata from Gemini API response
+   * @returns {Object} Extracted grounding information
+   */
+  _extractGroundingInfo(groundingMetadata) {
+    if (!groundingMetadata) return null;
+    
+    const info = {
+      searchQueries: [],
+      sources: []
+    };
+    
+    // Extract search queries
+    if (groundingMetadata.webSearchQueries) {
+      info.searchQueries = groundingMetadata.webSearchQueries;
+    }
+    
+    // Extract sources
+    if (groundingMetadata.groundingChunks) {
+      for (const chunk of groundingMetadata.groundingChunks) {
+        if (chunk.web) {
+          info.sources.push({
+            title: chunk.web.title || 'Untitled Source',
+            uri: chunk.web.uri || ''
+          });
+        }
+      }
+    }
+    
+    return info;
   }
 }
 
