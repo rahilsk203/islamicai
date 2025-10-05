@@ -1254,8 +1254,9 @@ export default {
     const brevityPrefs = {
       terse,
       verbose,
-      maxSentences: Number(body.max_sentences) > 0 ? Math.min(Number(body.max_sentences), 8) : (terse ? 4 : 12),
-      maxTokens: Number(body.max_tokens) > 0 ? Math.min(Number(body.max_tokens), 1024) : (terse ? 192 : 512)
+      // Increase max sentences for comprehensive answers: 4 for terse, 20 for normal, 30 for verbose
+      maxSentences: Number(body.max_sentences) > 0 ? Math.min(Number(body.max_sentences), 30) : (terse ? 4 : (verbose ? 30 : 20)),
+      maxTokens: Number(body.max_tokens) > 0 ? Math.min(Number(body.max_tokens), 2048) : (terse ? 192 : (verbose ? 1536 : 1024))
     };
     const languageInfo = body.language_info || {};
     
