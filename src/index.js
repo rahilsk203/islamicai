@@ -1258,7 +1258,10 @@ export default {
       maxSentences: Number(body.max_sentences) > 0 ? Math.min(Number(body.max_sentences), 30) : (terse ? 4 : (verbose ? 30 : 20)),
       maxTokens: Number(body.max_tokens) > 0 ? Math.min(Number(body.max_tokens), 2048) : (terse ? 192 : (verbose ? 1536 : 1024))
     };
-    const languageInfo = body.language_info || {};
+    const languageInfo = {
+      ...body.language_info,
+      response_prefs: brevityPrefs // Pass brevity preferences to language info
+    } || { response_prefs: brevityPrefs };
     
     // Get user's language preference from request body if provided
     const userLanguagePreference = body.user_language || null;

@@ -14,6 +14,9 @@ import { IslamicPrompt, IslamicGreetingSystem } from './islamic-prompt.js';
 import { APIKeyManager } from './api-key-manager.js';
 import { InternetDataProcessor } from './internet-data-processor.js';
 import { PrivacyFilter } from './privacy-filter.js';
+import { ResponseLengthOptimizer } from './response-length-optimizer.js';
+import { AdvancedQueryAnalyzer } from './advanced-query-analyzer.js';
+import { EnhancedResponseGenerator } from './enhanced-response-generator.js';
 
 // Advanced DSA Data Structures (Enhanced for Intelligence)
 class LRUCacheNode {
@@ -494,6 +497,9 @@ class GeminiAPI {
     this.islamicPrompt = new IslamicPrompt();
     this.internetProcessor = new InternetDataProcessor();
     this.privacyFilter = new PrivacyFilter();
+    this.responseLengthOptimizer = new ResponseLengthOptimizer();
+    this.queryAnalyzer = new AdvancedQueryAnalyzer();
+    this.responseGenerator = new EnhancedResponseGenerator();
     
     // Enhanced DSA Structures
     this.responseCache = new AdvancedLRUCache(1000);
@@ -643,6 +649,12 @@ class GeminiAPI {
       this.performanceMetrics.memoryPoolHits++;
       
       try {
+        // Advanced Query Analysis
+        const queryAnalysis = this.queryAnalyzer.analyzeQuery(userInput, {
+          history: messages,
+          userProfile: languageInfo.userProfile
+        });
+        
         // Islamic Greeting Check
         const greetingResult = this.islamicPrompt.detectAndHandleGreeting(userInput);
         if (greetingResult) {
@@ -650,7 +662,15 @@ class GeminiAPI {
           this.performanceMetrics.successfulRequests++;
           this._updatePerformanceMetrics(startTime, false);
           this.responseTree.update(this.metricsHistory.length - 1, Date.now() - startTime);
-          return greetingResult.response;
+          
+          // Enhance greeting response
+          const enhancedGreeting = this.responseGenerator.generateEnhancedResponse(
+            userInput, 
+            greetingResult.response, 
+            { userProfile: languageInfo.userProfile }
+          );
+          
+          return enhancedGreeting;
         }
 
         // Enhanced Deduplication: Bloom + Segment Tree Range Sum for Historical Matches
@@ -668,7 +688,18 @@ class GeminiAPI {
                 this.performanceMetrics.successfulRequests++;
                 this._updatePerformanceMetrics(startTime, false);
                 this.responseTree.update(this.metricsHistory.length - 1, Date.now() - startTime);
-                return filteredResponse;
+                
+                // Enhance cached response
+                const enhancedResponse = this.responseGenerator.generateEnhancedResponse(
+                  userInput, 
+                  filteredResponse, 
+                  { 
+                    history: messages, 
+                    userProfile: languageInfo.userProfile 
+                  }
+                );
+                
+                return enhancedResponse;
               }
             }
           }
@@ -717,6 +748,14 @@ class GeminiAPI {
           queryType
         );
 
+        // Intelligent Response Length Optimization
+        const brevityPrefs = languageInfo?.response_prefs || {};
+        const responseLengthConfig = this.responseLengthOptimizer.determineOptimalResponseLength(
+          userInput, 
+          queryType, 
+          brevityPrefs
+        );
+
         // Adaptive Generation Config (Intelligent: Adjust based on complexity)
         const complexityTemp = queryType.complexity === 'high' ? 0.6 : 0.4;
         const requestBodyBase = {
@@ -725,10 +764,10 @@ class GeminiAPI {
             parts: [{ text: languageSpecificPrompt + "\n\n" + enhancedPrompt }]
           }],
           generationConfig: {
-            temperature: complexityTemp,
-            topK: queryType.confidence > 0.8 ? 40 : 32,
-            topP: 0.95,
-            maxOutputTokens: 800,
+            temperature: responseLengthConfig.generationConfig.temperature,
+            topK: responseLengthConfig.generationConfig.topK,
+            topP: responseLengthConfig.generationConfig.topP,
+            maxOutputTokens: responseLengthConfig.generationConfig.maxOutputTokens,
             stopSequences: []
           },
           safetySettings: [
@@ -745,7 +784,8 @@ class GeminiAPI {
           lang: languageInfo,
           internet: internetData,
           location: locationInfo,
-          type: queryType
+          type: queryType,
+          analysis: queryAnalysis
         });
 
         if (streamingOptions.enableStreaming !== true) {
@@ -756,7 +796,18 @@ class GeminiAPI {
             this.performanceMetrics.successfulRequests++;
             this._updatePerformanceMetrics(startTime, false);
             this.responseTree.update(this.metricsHistory.length - 1, Date.now() - startTime);
-            return filteredResponse;
+            
+            // Enhance cached response
+            const enhancedResponse = this.responseGenerator.generateEnhancedResponse(
+              userInput, 
+              filteredResponse, 
+              { 
+                history: messages, 
+                userProfile: languageInfo.userProfile 
+              }
+            );
+            
+            return enhancedResponse;
           } else {
             this.performanceMetrics.cacheMisses++;
           }
@@ -770,7 +821,11 @@ class GeminiAPI {
         const urls = this._buildUrlsForModel(modelId);
 
         if (streamingOptions.enableStreaming !== false) {
-          const response = await this.generateStreamingResponse(requestBody, streamingOptions, modelId, startTime);
+          const response = await this.generateStreamingResponse(requestBody, streamingOptions, modelId, startTime, responseLengthConfig, {
+            userInput,
+            messages,
+            languageInfo
+          });
           this.performanceMetrics.successfulRequests++;
           this._updatePerformanceMetrics(startTime, includeSearchInstruction);
           this.responseTree.update(this.metricsHistory.length - 1, Date.now() - startTime);
@@ -794,16 +849,28 @@ class GeminiAPI {
               }
             } catch (e) {}
 
-            let finalText = this.postProcessResponse(responseText, queryType.topic, languageInfo);
+            // Enhance the response with advanced features
+            let finalText = this.responseGenerator.generateEnhancedResponse(
+              userInput,
+              responseText,
+              {
+                history: messages,
+                userProfile: languageInfo.userProfile,
+                queryAnalysis: queryAnalysis
+              }
+            );
             
             if (groundingInfo && groundingInfo.relevantSources.length > 0) {
               finalText += `\n\n[Based on verified sources: ${groundingInfo.relevantSources.slice(0, 3).map(s => s.title).join(', ')}]`;
             }
             
-            // Increase default maxSentences for comprehensive answers from 8 to 20
-            const maxSentences = languageInfo?.response_prefs?.maxSentences || 20;
+            // Use the optimized maxSentences from responseLengthConfig
+            const maxSentences = responseLengthConfig.maxSentences;
             finalText = this._enforceBrevity(finalText, maxSentences);
             finalText = this._sanitizeResponse(finalText);
+            
+            // Optimize for user preferences
+            finalText = this.responseGenerator.optimizeForUserPreferences(finalText, brevityPrefs);
             
             this.responseCache.put(cacheKey, this._compressResponse(finalText));
             
@@ -827,7 +894,6 @@ class GeminiAPI {
       throw new Error(safeErrorMessage);
     }
   }
-
   // Proprietary Intelligent Prompt Builder: Deep Search Understanding
   _buildIntelligentEnhancedPrompt(userInput, contextualPrompt, languageInfo, internetData, locationInfo, queryType) {
     let prompt = new StringBuilder().append(contextualPrompt).toString();  // O(n) concat
@@ -993,7 +1059,7 @@ class GeminiAPI {
         hindi: 'अल्लाह सबसे बेहतर जानता है 🤲',
         hinglish: 'Allah sabse behtar jaanta hai 🤲',
         urdu: 'اللہ سب سے بہتر جانتا ہے 🤲',
-        arabic: 'الله أعلم 🤲',
+        arabic: 'اللہ أعلم 🤲',
         persian: 'خداوند بهتر می‌داند 🤲'
       };
       const appropriateEnding = languageEndings[detectedLanguage] || languageEndings.english;
@@ -1119,7 +1185,7 @@ ${languageInstruction}
   }
 
   // Fixed Streaming with 'self' Binding + Timeout Fallback
-  async generateStreamingResponse(requestBody, streamingOptions = {}, modelId = null, startTime) {
+  generateStreamingResponse(requestBody, streamingOptions = {}, modelId = null, startTime, responseLengthConfig = null, context = {}) {
     const {
       chunkSize = 50,
       delay = 50,
@@ -1179,7 +1245,19 @@ ${languageInstruction}
               if (includeMetadata) {
                 controller.enqueue(new TextEncoder().encode(self.createStreamingChunk({ type: 'start', content: '', metadata: { timestamp: new Date().toISOString() } })));
               }
-              let finalText = self._enforceBrevity(self.postProcessResponse(combined, 'general', {}), 8);
+              
+              // Enhance the response with advanced features
+              let enhancedResponse = self.responseGenerator.generateEnhancedResponse(
+                context.userInput,
+                combined,
+                {
+                  history: context.messages,
+                  userProfile: context.languageInfo?.userProfile
+                }
+              );
+              
+              // Use the optimized maxSentences from responseLengthConfig
+              let finalText = self._enforceBrevity(enhancedResponse, responseLengthConfig?.maxSentences || 30);
               
               if (groundingInfo && groundingInfo.relevantSources.length > 0) {
                 finalText += `\n\n[Based on verified sources: ${groundingInfo.relevantSources.slice(0, 3).map(s => s.title).join(', ')}]`;
@@ -1228,7 +1306,18 @@ ${languageInstruction}
               try {
                 const obj = JSON.parse(jsonStr);
                 const texts = self.extractTexts(obj);
-                for (const t of texts) emitContent(t);
+                for (const t of texts) {
+                  // Enhance each chunk as it comes in for streaming
+                  const enhancedChunk = self.responseGenerator.generateEnhancedResponse(
+                    context.userInput,
+                    t,
+                    {
+                      history: context.messages,
+                      userProfile: context.languageInfo?.userProfile
+                    }
+                  );
+                  emitContent(enhancedChunk);
+                }
               } catch (e) {
                 // Skip malformed
               }
@@ -1239,9 +1328,20 @@ ${languageInstruction}
 
           if (aggregated) {
             let groundingInfo = null;  // Extract if needed from aggregated (simplified)
-            // Use the proper maxSentences from languageInfo instead of hardcoded 8
-            const maxSentences = languageInfo?.response_prefs?.maxSentences || 20;
-            let finalText = self._enforceBrevity(self.postProcessResponse(aggregated, 'general', {}), maxSentences);
+            // Use the optimized maxSentences from responseLengthConfig
+            const maxSentences = responseLengthConfig?.maxSentences || 30;
+            
+            // Enhance the final aggregated response
+            let enhancedResponse = self.responseGenerator.generateEnhancedResponse(
+              context.userInput,
+              aggregated,
+              {
+                history: context.messages,
+                userProfile: context.languageInfo?.userProfile
+              }
+            );
+            
+            let finalText = self._enforceBrevity(enhancedResponse, maxSentences);
             if (groundingInfo && groundingInfo.relevantSources.length > 0) {
               finalText += `\n\n[Based on verified sources: ${groundingInfo.relevantSources.slice(0, 3).map(s => s.title).join(', ')}]`;
             }
@@ -1259,7 +1359,17 @@ ${languageInstruction}
               groundingInfo = self._extractAndScoreGroundingInfo(fallbackData.candidates[0].groundingMetadata);
             }
             
-            let finalText = combined;
+            // Enhance the fallback response
+            let enhancedResponse = self.responseGenerator.generateEnhancedResponse(
+              context.userInput,
+              combined,
+              {
+                history: context.messages,
+                userProfile: context.languageInfo?.userProfile
+              }
+            );
+            
+            let finalText = enhancedResponse;
             if (groundingInfo && groundingInfo.relevantSources.length > 0) {
               finalText += `\n\n[Based on verified sources: ${groundingInfo.relevantSources.slice(0, 3).map(s => s.title).join(', ')}]`;
             }
