@@ -1254,17 +1254,10 @@ export default {
     const brevityPrefs = {
       terse,
       verbose,
-      // Increase max sentences for comprehensive answers: 4 for terse, 20 for normal, 30 for verbose
-      maxSentences: Number(body.max_sentences) > 0 ? Math.min(Number(body.max_sentences), 30) : (terse ? 4 : (verbose ? 30 : 20)),
-      maxTokens: Number(body.max_tokens) > 0 ? Math.min(Number(body.max_tokens), 2048) : (terse ? 192 : (verbose ? 1536 : 1024))
+      maxSentences: Number(body.max_sentences) > 0 ? Math.min(Number(body.max_sentences), 8) : (terse ? 4 : 12),
+      maxTokens: Number(body.max_tokens) > 0 ? Math.min(Number(body.max_tokens), 1024) : (terse ? 192 : 512)
     };
-    const languageInfo = {
-      ...body.language_info,
-      response_prefs: brevityPrefs // Pass brevity preferences to language info
-    } || { response_prefs: brevityPrefs };
-    
-    // Get user's language preference from request body if provided
-    const userLanguagePreference = body.user_language || null;
+    const languageInfo = body.language_info || {};
     
     // Get default streaming options and allow override
     const defaultStreamingOptions = this.getDefaultStreamingOptions(env);
@@ -1340,15 +1333,11 @@ export default {
       });
     }
 
-    // Get session data for context analysis
-    const sessionData = await sessionManager.getSessionData(sessionId);
-    
-    // NEW: Enhanced adaptive language learning with behavior analysis
+    // Apply adaptive language learning and detection
     const languageAdaptation = adaptiveLanguageSystem.adaptLanguage(userMessage, sessionId, {
       previousMessages: await sessionManager.getRecentMessages(sessionId, 5),
       userProfile: await sessionManager.getUserProfile(sessionId),
-      timestamp: Date.now(),
-      userLanguagePreference: userLanguagePreference // Pass user's language preference
+      timestamp: Date.now()
     });
 
     // Check for commands
@@ -1366,15 +1355,14 @@ export default {
     }
 
     // Get session data for context analysis
-    const sessionDataForContext = await sessionManager.getSessionData(sessionId);
+    const sessionData = await sessionManager.getSessionData(sessionId);
     
-    // NEW: Enhanced DSA-based intelligent context integration with behavioral patterns
-    // Prioritize responding based on the user's current message and behavior patterns
+    // DSA-based intelligent context integration
+    // Prioritize responding based on the user's current message
     // Only integrate past context when there's contextual or logical connection
     let contextualPrompt = islamicPrompt.getContextIntegratedPrompt(
       userMessage,
-      sessionDataForContext.history || [], // Past context from session history
-      languageAdaptation // Pass language preferences
+      sessionData.history || [] // Past context from session history
     );
 
     // Hybrid recall: short-term (already in contextualPromptBase) + semantic similar long-term
@@ -1389,7 +1377,6 @@ export default {
     let userPreferences = null;
     let recentSummaries = [];
     let userProfile = null;
-    let behavioralInsights = null; // NEW: Store behavioral insights
     
     // Only load personalized data for authenticated users
     if (authedUserId) {
@@ -1400,43 +1387,17 @@ export default {
         recentSummaries = await d1.getRecentSummaries(authedUserId, 3);
         userProfile = await d1.getUserProfile(authedUserId);
         
-        // NEW: Get behavioral insights from session data
-        const sessionInfo = await sessionManager.getRecentMessages(sessionId, 10);
-        if (sessionInfo.behaviorPatterns) {
-          behavioralInsights = sessionInfo.behaviorPatterns;
+        if (userPreferences.language) {
+          contextualPrompt += `\n\nUser language preference: ${userPreferences.language}.`;
         }
-        
-        // Use user's language preference from request body if provided, otherwise use stored preference
-        const effectiveLanguage = userLanguagePreference || (userPreferences ? userPreferences.language : null);
-        
-        if (effectiveLanguage) {
-          contextualPrompt += `\n\nUser language preference: ${effectiveLanguage}.`;
-        }
-        if (userPreferences && userPreferences.madhhab) {
+        if (userPreferences.madhhab) {
           contextualPrompt += `\nMadhhab preference: ${userPreferences.madhhab}.`;
         }
-        if (userPreferences && userPreferences.interests && userPreferences.interests.length) {
+        if (userPreferences.interests && userPreferences.interests.length) {
           contextualPrompt += `\nInterests: ${userPreferences.interests.join(', ')}.`;
         }
         if (recentSummaries.length) {
           contextualPrompt += `\nRecent discussion summaries: ${recentSummaries.map(s => `- ${s}`).join(' ')}`;
-        }
-        
-        // NEW: Add behavioral insights to contextual prompt
-        if (behavioralInsights) {
-          contextualPrompt += `\n\n**User Behavior Insights:**`;
-          contextualPrompt += `\n- Preferred response length: ${behavioralInsights.responsePreferences.lengthPreference || 'balanced'}`;
-          contextualPrompt += `\n- Detail level preference: ${behavioralInsights.responsePreferences.detailLevel || 'moderate'}`;
-          contextualPrompt += `\n- Example preference: ${behavioralInsights.responsePreferences.examplePreference ? 'Yes' : 'No'}`;
-          contextualPrompt += `\n- Dominant interaction style: ${behavioralInsights.dominantInteractionStyle || 'standard'}`;
-          contextualPrompt += `\n- Learning adaptability score: ${behavioralInsights.learningAdaptability ? behavioralInsights.learningAdaptability.toFixed(2) : 'N/A'}`;
-          
-          // Add topic interests
-          if (behavioralInsights.topicInterests && Object.keys(behavioralInsights.topicInterests).length > 0) {
-            contextualPrompt += `\n- Topic interests: ${Object.entries(behavioralInsights.topicInterests)
-              .map(([topic, interest]) => `${topic} (${interest})`)
-              .join(', ')}`;
-          }
         }
       } catch (e) {
         console.log('D1 recall failed:', e.message);
@@ -1446,11 +1407,6 @@ export default {
       userPreferences = null;
       recentSummaries = [];
       userProfile = null;
-      
-      // Even for guest users, use language preference from request body if provided
-      if (userLanguagePreference) {
-        contextualPrompt += `\n\nUser language preference: ${userLanguagePreference}.`;
-      }
     }
     
     if (recall.similar && recall.similar.length > 0) {
@@ -1476,69 +1432,9 @@ export default {
       response_prefs: brevityPrefs
     };
 
-    // Enhance contextual prompt with better connection information
-    if (languageAdaptation.learningData && languageAdaptation.learningData.connectionType) {
-      switch (languageAdaptation.learningData.connectionType) {
-        case 'direct_response':
-          contextualPrompt += '\n\n**Conversation Context**: This is a direct response to the previous message. Maintain consistency in tone and language.';
-          break;
-        case 'topic_continuation':
-          contextualPrompt += '\n\n**Conversation Context**: This continues the ongoing topic. Build upon previous discussion points.';
-          break;
-        case 'content_reference':
-          contextualPrompt += '\n\n**Conversation Context**: This references previous content. Ensure coherence with earlier explanations.';
-          break;
-        case 'contextual_consistency':
-          contextualPrompt += '\n\n**Conversation Context**: Maintain contextual consistency with the ongoing conversation flow.';
-          break;
-      }
-    }
-
-    // NEW: Add behavioral pattern instructions to contextual prompt
-    if (languageAdaptation.learningData && languageAdaptation.learningData.behaviorPatterns) {
-      const behavior = languageAdaptation.learningData.behaviorPatterns;
-      contextualPrompt += '\n\n**Behavioral Response Guidance:**';
-      
-      // Adjust response based on user's interaction style
-      switch (behavior.dominantInteractionStyle) {
-        case 'polite':
-          contextualPrompt += '\n- Respond in a respectful and courteous manner.';
-          break;
-        case 'urgent':
-          contextualPrompt += '\n- Provide concise and direct responses.';
-          break;
-        case 'direct':
-          contextualPrompt += '\n- Be straightforward and to the point.';
-          break;
-        default:
-          contextualPrompt += '\n- Maintain a balanced and natural conversational tone.';
-      }
-      
-      // Adjust response based on complexity preference
-      switch (behavior.complexityPreference) {
-        case 'prefers_simple':
-          contextualPrompt += '\n- Use simple language and avoid complex terminology.';
-          break;
-        case 'prefers_complex':
-          contextualPrompt += '\n- Provide detailed explanations with scholarly depth.';
-          break;
-        default:
-          contextualPrompt += '\n- Use a balanced approach with appropriate detail level.';
-      }
-      
-      // Adjust response based on learning adaptability
-      if (behavior.learningAdaptability > 0.7) {
-        contextualPrompt += '\n- User shows high learning adaptability. Introduce new concepts when relevant.';
-      } else if (behavior.learningAdaptability < 0.3) {
-        contextualPrompt += '\n- User may need more foundational explanations. Avoid overly complex concepts.';
-      }
-    }
-
     try {
       // Get location information early for context
       let locationInfo = null;
-      let prayerTimesInfo = null;
-      
       if (userIP && userIP !== 'unknown') {
         try {
           const { LocationPrayerService } = await import('./location-prayer-service.js');
@@ -1556,33 +1452,6 @@ export default {
             isDefault: location.isDefault || false
           };
           console.log('Location information retrieved:', locationInfo);
-          
-          // NEW: Get prayer times for the user's location if the query is about prayer times
-          const lowerUserMessage = userMessage.toLowerCase();
-          const prayerTimeKeywords = ['prayer time', 'namaz time', 'azaan time', 'prayer schedule', 
-                                    'fajr', 'dhuhr', 'asr', 'maghrib', 'isha', 'salah time', 
-                                    'prayer times today', 'when is', 'azaan', 'adhan', 'iqamah',
-                                    'next prayer', 'current prayer', 'prayer for today', 'namaz'];
-          
-          const isPrayerTimeQuery = prayerTimeKeywords.some(keyword => lowerUserMessage.includes(keyword));
-          
-          if (isPrayerTimeQuery) {
-            try {
-              const prayerTimes = await locationService.getPrayerTimes(location, new Date());
-              if (prayerTimes) {
-                prayerTimesInfo = {
-                  date: prayerTimes.date,
-                  location: prayerTimes.location,
-                  times: prayerTimes.times,
-                  timezone: prayerTimes.timezone,
-                  source: prayerTimes.source || 'calculated'
-                };
-                console.log('Prayer times retrieved:', prayerTimesInfo);
-              }
-            } catch (prayerError) {
-              console.log('Prayer time retrieval failed:', prayerError.message);
-            }
-          }
         } catch (error) {
           console.log('Location detection failed:', error.message);
           // Even if location detection fails, we still want to continue with the request
@@ -1605,33 +1474,6 @@ export default {
             isDefault: true
           };
           console.log('Default location information used:', locationInfo);
-          
-          // NEW: Get prayer times for default location if the query is about prayer times
-          const lowerUserMessage = userMessage.toLowerCase();
-          const prayerTimeKeywords = ['prayer time', 'namaz time', 'azaan time', 'prayer schedule', 
-                                    'fajr', 'dhuhr', 'asr', 'maghrib', 'isha', 'salah time', 
-                                    'prayer times today', 'when is', 'azaan', 'adhan', 'iqamah',
-                                    'next prayer', 'current prayer', 'prayer for today', 'namaz'];
-          
-          const isPrayerTimeQuery = prayerTimeKeywords.some(keyword => lowerUserMessage.includes(keyword));
-          
-          if (isPrayerTimeQuery) {
-            try {
-              const prayerTimes = await locationService.getPrayerTimes(defaultLocation, new Date());
-              if (prayerTimes) {
-                prayerTimesInfo = {
-                  date: prayerTimes.date,
-                  location: prayerTimes.location,
-                  times: prayerTimes.times,
-                  timezone: prayerTimes.timezone,
-                  source: prayerTimes.source || 'calculated'
-                };
-                console.log('Prayer times retrieved for default location:', prayerTimesInfo);
-              }
-            } catch (prayerError) {
-              console.log('Prayer time retrieval for default location failed:', prayerError.message);
-            }
-          }
         } catch (error) {
           console.log('Failed to get default location:', error.message);
         }
@@ -1650,7 +1492,6 @@ export default {
           sessionManager,
           userIP,
           locationInfo, // Pass location info to streaming handler
-          prayerTimesInfo, // Pass prayer times info to streaming handler
           privacyFilter, // Pass privacy filter to streaming handler
           origin // Pass origin to streaming handler
         );
@@ -1663,22 +1504,6 @@ export default {
           contextualPrompt
         }, userIP);
         
-        // Add prayer times information to the contextual prompt if available
-        if (prayerTimesInfo) {
-          contextualPrompt += `\n\n**Prayer Times Information:**`;
-          contextualPrompt += `\nLocation: ${prayerTimesInfo.location.city}, ${prayerTimesInfo.location.country}`;
-          contextualPrompt += `\nDate: ${prayerTimesInfo.date}`;
-          contextualPrompt += `\nFajr: ${prayerTimesInfo.times.fajr}`;
-          contextualPrompt += `\nSunrise: ${prayerTimesInfo.times.sunrise}`;
-          contextualPrompt += `\nDhuhr: ${prayerTimesInfo.times.dhuhr}`;
-          contextualPrompt += `\nAsr: ${prayerTimesInfo.times.asr}`;
-          contextualPrompt += `\nMaghrib: ${prayerTimesInfo.times.maghrib}`;
-          contextualPrompt += `\nIsha: ${prayerTimesInfo.times.isha}`;
-          contextualPrompt += `\nTimezone: ${prayerTimesInfo.timezone}`;
-          contextualPrompt += `\nSource: ${prayerTimesInfo.source === 'timesprayer.org' ? 'Accurate data from timesprayer.org' : 'Calculated based on astronomical calculations'}`;
-          contextualPrompt += `\n\nUse this information to provide accurate prayer times to the user in their preferred language.`;
-        }
-        
         // Call Gemini API with direct response, now including location context
         const geminiResponse = await geminiAPI.generateResponse(
           [], 
@@ -1688,8 +1513,7 @@ export default {
           enhancedLanguageInfo, 
           streamingOptions,
           userIP,
-          locationInfo, // Pass location info to Gemini API
-          prayerTimesInfo // Pass prayer times info to Gemini API
+          locationInfo // Pass location info to Gemini API
         );
         
         // Filter the response before sending to user
@@ -1741,7 +1565,6 @@ export default {
           language_info: enhancedLanguageInfo,
           internet_enhanced: true,
           location_info: locationInfo,
-          prayer_times_info: prayerTimesInfo, // Include prayer times info in response
           user_preferences: authedUserId ? userPreferences : null,
           user_profile_info: authedUserId ? userProfile : null,
           is_authenticated: !!authedUserId,
@@ -1783,98 +1606,5 @@ export default {
         headers: worker.responseHeaders.json(origin),
       });
     }
-  },
-
-  /**
-   * Handle streaming response with DSA-level optimizations
-   * @private
-   */
-  async handleStreamingResponse(
-    geminiAPI, 
-    sessionId, 
-    userMessage, 
-    contextualPrompt, 
-    enhancedLanguageInfo, 
-    streamingOptions,
-    sessionManager,
-    userIP,
-    locationInfo,
-    prayerTimesInfo,
-    privacyFilter,
-    origin
-  ) {
-    try {
-      // Process internet data if needed
-      const internetData = await geminiAPI.internetProcessor.processQuery(userMessage, {
-        sessionId,
-        languageInfo: enhancedLanguageInfo,
-        contextualPrompt
-      }, userIP);
-      
-      // Add prayer times information to the contextual prompt if available
-      if (prayerTimesInfo) {
-        contextualPrompt += `\n\n**Prayer Times Information:**`;
-        contextualPrompt += `\nLocation: ${prayerTimesInfo.location.city}, ${prayerTimesInfo.location.country}`;
-        contextualPrompt += `\nDate: ${prayerTimesInfo.date}`;
-        contextualPrompt += `\nFajr: ${prayerTimesInfo.times.fajr}`;
-        contextualPrompt += `\nSunrise: ${prayerTimesInfo.times.sunrise}`;
-        contextualPrompt += `\nDhuhr: ${prayerTimesInfo.times.dhuhr}`;
-        contextualPrompt += `\nAsr: ${prayerTimesInfo.times.asr}`;
-        contextualPrompt += `\nMaghrib: ${prayerTimesInfo.times.maghrib}`;
-        contextualPrompt += `\nIsha: ${prayerTimesInfo.times.isha}`;
-        contextualPrompt += `\nTimezone: ${prayerTimesInfo.timezone}`;
-        contextualPrompt += `\nSource: ${prayerTimesInfo.source === 'timesprayer.org' ? 'Accurate data from timesprayer.org' : 'Calculated based on astronomical calculations'}`;
-        
-        // Add calculation method information
-        if (prayerTimesInfo.calculationMethod) {
-          contextualPrompt += `\nCalculation Method: ${prayerTimesInfo.calculationMethodName || prayerTimesInfo.calculationMethod}`;
-        }
-        
-        // Add note about variation in calculation methods
-        contextualPrompt += `\n\nNote: Prayer times can vary slightly based on different calculation methods used by various Islamic organizations. The times provided are based on the ${prayerTimesInfo.calculationMethodName || 'standard'} method.`;
-        contextualPrompt += `\n\nUse this information to provide accurate prayer times to the user in their preferred language, and mention that times may vary based on different calculation methods.`;
-      }
-
-      // Call Gemini API with streaming response, now including location context
-      const geminiResponse = await geminiAPI.generateResponse(
-        [], 
-        sessionId, 
-        userMessage, 
-        contextualPrompt, 
-        enhancedLanguageInfo, 
-        streamingOptions,
-        userIP,
-        locationInfo, // Pass location info to Gemini API
-        prayerTimesInfo // Pass prayer times info to Gemini API
-      );
-
-      // For streaming responses, we don't filter until the end
-      // The privacy filtering will be applied to chunks as they're sent
-
-      // Return streaming response with proper headers
-      return new Response(geminiResponse, {
-        status: 200,
-        headers: worker.responseHeaders.stream(origin)
-      });
-    } catch (error) {
-      console.error('Error generating streaming response:', error);
-      
-      // Use privacy filter for error messages
-      const safeErrorMessage = privacyFilter.filterResponse(error.message);
-      
-      // Return error response
-      const errorResponse = {
-        session_id: sessionId,
-        reply: "Sorry, I'm having trouble processing your request right now. Please try again.",
-        error: safeErrorMessage,
-        streaming: true
-      };
-
-      return new Response(JSON.stringify(errorResponse), {
-        status: 200,
-        headers: worker.responseHeaders.json(origin)
-      });
-    }
   }
-
 };

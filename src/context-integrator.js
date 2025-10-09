@@ -1,5 +1,3 @@
-import { IslamicPrompt } from './islamic-prompt.js';
-
 /**
  * ContextIntegrator - DSA-based intelligent context integration system
  * 
@@ -8,64 +6,9 @@ import { IslamicPrompt } from './islamic-prompt.js';
  * when there's contextual or logical connection.
  */
 export class ContextIntegrator {
-  constructor(islamicPrompt = null) {
+  constructor() {
     // Initialize data structures for efficient context analysis
     this._initializeOptimizedDataStructures();
-    
-    // Accept IslamicPrompt instance to avoid circular dependency
-    this.islamicPrompt = islamicPrompt;
-    
-    // Enhanced contextual analysis for stronger connections
-    this.contextualAnalysisEnhancements = {
-      semanticFlowDetection: true,
-      emotionalContextTracking: true,
-      intentRecognition: true,
-      topicEvolutionAnalysis: true
-    };
-    
-    // Enhanced topic clustering with subtopics
-    this.enhancedTopicClusters = {
-      'quranic_studies': {
-        keywords: ['quran', 'surah', 'ayah', 'verse', 'recitation', 'tilawah', 'revelation'],
-        subtopics: ['tafsir', 'translation', 'context', 'themes', 'characters']
-      },
-      'hadith_studies': {
-        keywords: ['hadith', 'sunnah', 'prophet', 'sahih', 'narration', 'authentic', 'bukhari', 'muslim'],
-        subtopics: ['classification', 'commentary', 'context', 'application']
-      },
-      'fiqh_jurisprudence': {
-        keywords: ['fiqh', 'halal', 'haram', 'ruling', 'judgment', 'legal', 'madhhab', 'hanafi', 'shafi', 'maliki', 'hanbali'],
-        subtopics: ['rituals', 'transactions', 'family', 'criminal', 'business']
-      },
-      'seerah_history': {
-        keywords: ['seerah', 'history', 'battle', 'migration', 'hijrah', 'companions', 'khilafah', 'caliph'],
-        subtopics: ['events', 'figures', 'chronology', 'lessons']
-      },
-      'spiritual_development': {
-        keywords: ['iman', 'faith', 'taqwa', 'repentance', 'dua', 'supplication', 'dhikr', 'remembrance'],
-        subtopics: ['practices', 'challenges', 'growth', 'purification']
-      },
-      'daily_practice': {
-        keywords: ['prayer', 'namaz', 'wudu', 'fasting', 'roza', 'zakat', 'hajj', 'pilgrimage'],
-        subtopics: ['performance', 'conditions', 'virtues', 'mistakes']
-      },
-      'ethics_morality': {
-        keywords: ['ethics', 'morals', 'character', 'adab', 'manners', 'virtue', 'patience', 'gratitude'],
-        subtopics: ['social', 'personal', 'professional', 'family']
-      },
-      'contemporary_issues': {
-        keywords: ['modern', 'today', 'current', 'now', '21st century', 'contemporary', 'technology', 'social media'],
-        subtopics: ['finance', 'ethics', 'family', 'workplace']
-      },
-      'family_relations': {
-        keywords: ['family', 'children', 'parent', 'husband', 'wife', 'marriage', 'divorce', 'inheritance'],
-        subtopics: ['rights', 'responsibilities', 'conflicts', 'upbringing']
-      },
-      'business_finance': {
-        keywords: ['business', 'trade', 'investment', 'riba', 'interest', 'halal income', 'zakat calculation'],
-        subtopics: ['ethics', 'contracts', 'partnerships', 'banking']
-      }
-    };
   }
 
   /**
@@ -139,9 +82,6 @@ export class ContextIntegrator {
     
     // DSA: LRU cache for expensive operations
     this.lruCache = new Map();
-    
-    // Note: We'll initialize the IslamicPrompt separately to avoid circular dependency
-    // this.islamicPrompt = new IslamicPrompt();
   }
 
   /**
@@ -191,18 +131,6 @@ export class ContextIntegrator {
   }
 
   /**
-   * Check if current message has direct reference to past context
-   * @param {string} message - Lowercase message
-   * @returns {boolean} True if direct reference found
-   * @private
-   */
-  _hasDirectReference(message) {
-    return Array.from(this.contextualConnectionKeywords).some(keyword => 
-      message.includes(keyword)
-    );
-  }
-
-  /**
    * Analyze contextual connections between current message and past context
    * @param {string} currentMessage - The user's current message
    * @param {Array} pastContext - Array of past messages/contexts
@@ -218,12 +146,7 @@ export class ContextIntegrator {
       relevantContexts: [],
       topicClusters: [],
       urgencyLevel: 0,
-      semanticSimilarity: 0,
-      // Enhanced analysis fields
-      emotionalFlow: null,
-      intentAlignment: null,
-      topicEvolution: null,
-      contextualConsistency: 0
+      semanticSimilarity: 0
     };
     
     // Check for direct references to past context
@@ -231,7 +154,7 @@ export class ContextIntegrator {
     
     // Calculate connection scores for each past context item
     pastContext.forEach((context, index) => {
-      const score = this._calculateEnhancedConnectionScore(lowerCurrentMessage, context);
+      const score = this._calculateConnectionScore(lowerCurrentMessage, context);
       if (score > 0.3) { // Threshold for relevance
         results.relevantContexts.push({
           context,
@@ -256,23 +179,29 @@ export class ContextIntegrator {
     // Calculate semantic similarity
     results.semanticSimilarity = this._calculateSemanticSimilarity(lowerCurrentMessage, pastContext);
     
-    // NEW: Enhanced analysis
-    results.emotionalFlow = this._analyzeEmotionalFlow(currentMessage, pastContext);
-    results.intentAlignment = this._analyzeIntentAlignment(currentMessage, pastContext);
-    results.topicEvolution = this._analyzeTopicEvolution(currentMessage, pastContext);
-    results.contextualConsistency = this._calculateContextualConsistency(currentMessage, pastContext);
-    
     return results;
   }
 
   /**
-   * Calculate enhanced connection score with multiple factors
-   * @param {string} currentMessage - Lowercase current message
-   * @param {Object} contextItem - Context item to compare
-   * @returns {number} Enhanced connection score (0-1)
+   * Check if current message has direct reference to past context
+   * @param {string} message - Lowercase message
+   * @returns {boolean} True if direct reference found
    * @private
    */
-  _calculateEnhancedConnectionScore(currentMessage, contextItem) {
+  _hasDirectReference(message) {
+    return Array.from(this.contextualConnectionKeywords).some(keyword => 
+      message.includes(keyword)
+    );
+  }
+
+  /**
+   * Calculate connection score between current message and context item
+   * @param {string} currentMessage - Lowercase current message
+   * @param {Object} contextItem - Context item to compare
+   * @returns {number} Connection score (0-1)
+   * @private
+   */
+  _calculateConnectionScore(currentMessage, contextItem) {
     // Extract content from context item
     const contextContent = (contextItem.content || contextItem.text || '').toLowerCase();
     
@@ -289,7 +218,6 @@ export class ContextIntegrator {
     
     this.metrics.cacheMisses++;
     
-    // Base scores from original method
     let score = 0;
     
     // Word overlap scoring (Jaccard similarity)
@@ -317,27 +245,11 @@ export class ContextIntegrator {
     let semanticScore = 0;
     semanticScore = this._calculateSemanticVectorSimilarity(currentMessage, contextContent);
     
-    // NEW: Emotional context similarity
-    let emotionalScore = 0;
-    emotionalScore = this._calculateEmotionalSimilarity(currentMessage, contextContent);
-    
-    // NEW: Intent alignment score
-    let intentScore = 0;
-    intentScore = this._calculateIntentAlignment(currentMessage, contextContent);
-    
-    // NEW: Temporal proximity boost (more recent contexts are more relevant)
-    let recencyScore = 0;
-    if (contextItem.timestamp) {
-      const timeDiff = Date.now() - new Date(contextItem.timestamp).getTime();
-      const hoursDiff = timeDiff / (1000 * 60 * 60);
-      // Boost score for recent contexts (last 24 hours)
-      recencyScore = Math.max(0, 1 - (hoursDiff / 24));
-    }
+    // Position weighting (more recent contexts are more relevant)
+    // This would be implemented if we had positional information
     
     // Combine scores with weights
-    score = (jaccardScore * 0.25) + (keywordScore * 0.15) + (topicScore * 0.2) + 
-            (semanticScore * 0.15) + (emotionalScore * 0.1) + (intentScore * 0.1) + 
-            (recencyScore * 0.05);
+    score = (jaccardScore * 0.4) + (keywordScore * 0.2) + (topicScore * 0.2) + (semanticScore * 0.2);
     
     // Boost score if there's a direct reference
     if (this._hasDirectReference(currentMessage)) {
@@ -348,184 +260,6 @@ export class ContextIntegrator {
     this._putInCache(cacheKey, score);
     
     return score;
-  }
-
-  /**
-   * Calculate emotional similarity between texts
-   * @param {string} text1 - First text
-   * @param {string} text2 - Second text
-   * @returns {number} Emotional similarity score (0-1)
-   * @private
-   */
-  _calculateEmotionalSimilarity(text1, text2) {
-    const emotion1 = this._detectEmotion(text1);
-    const emotion2 = this._detectEmotion(text2);
-    
-    return emotion1 === emotion2 ? 1 : 0;
-  }
-
-  /**
-   * Calculate intent alignment between texts
-   * @param {string} text1 - First text
-   * @param {string} text2 - Second text
-   * @returns {number} Intent alignment score (0-1)
-   * @private
-   */
-  _calculateIntentAlignment(text1, text2) {
-    const intent1 = this._detectIntent(text1);
-    const intent2 = this._detectIntent(text2);
-    
-    return intent1 === intent2 ? 1 : 0;
-  }
-
-  /**
-   * Detect emotion in text
-   * @param {string} text - Input text
-   * @returns {string} Detected emotion
-   * @private
-   */
-  _detectEmotion(text) {
-    const lowerText = text.toLowerCase();
-    
-    if (lowerText.includes('happy') || lowerText.includes('joy') || lowerText.includes('alhamdulillah')) {
-      return 'positive';
-    } else if (lowerText.includes('sad') || lowerText.includes('upset') || lowerText.includes('worried')) {
-      return 'negative';
-    } else if (lowerText.includes('confused') || lowerText.includes('help') || lowerText.includes('understand')) {
-      return 'confused';
-    } else if (lowerText.includes('curious') || lowerText.includes('wonder') || lowerText.includes('question')) {
-      return 'curious';
-    } else if (lowerText.includes('angry') || lowerText.includes('frustrated') || lowerText.includes('mad')) {
-      return 'angry';
-    }
-    
-    return 'neutral';
-  }
-
-  /**
-   * Detect intent in text
-   * @param {string} text - Input text
-   * @returns {string} Detected intent
-   * @private
-   */
-  _detectIntent(text) {
-    const lowerText = text.toLowerCase();
-    
-    if (lowerText.includes('question') || lowerText.includes('?') || lowerText.includes('what') || 
-        lowerText.includes('how') || lowerText.includes('why') || lowerText.includes('when')) {
-      return 'questioning';
-    } else if (lowerText.includes('explain') || lowerText.includes('tell me') || lowerText.includes('describe')) {
-      return 'seeking_information';
-    } else if (lowerText.includes('thank') || lowerText.includes('thanks') || lowerText.includes('shukran')) {
-      return 'gratitude';
-    } else if (lowerText.includes('agree') || lowerText.includes('yes') || lowerText.includes('correct')) {
-      return 'agreement';
-    } else if (lowerText.includes('disagree') || lowerText.includes('no') || lowerText.includes('wrong')) {
-      return 'disagreement';
-    } else if (lowerText.includes('request') || lowerText.includes('please') || lowerText.includes('can you')) {
-      return 'requesting';
-    }
-    
-    return 'general';
-  }
-
-  /**
-   * Analyze emotional flow between messages
-   * @param {string} currentMessage - Current message
-   * @param {Array} pastContext - Past context
-   * @returns {Object} Emotional flow analysis
-   * @private
-   */
-  _analyzeEmotionalFlow(currentMessage, pastContext) {
-    if (pastContext.length === 0) return null;
-    
-    const lastMessage = pastContext[pastContext.length - 1];
-    const lastEmotion = this._detectEmotion(lastMessage.content || lastMessage.text || '');
-    const currentEmotion = this._detectEmotion(currentMessage);
-    
-    return {
-      previousEmotion: lastEmotion,
-      currentEmotion: currentEmotion,
-      emotionalContinuity: lastEmotion === currentEmotion,
-      emotionalShift: lastEmotion !== currentEmotion
-    };
-  }
-
-  /**
-   * Analyze intent alignment between current message and past context
-   * @param {string} currentMessage - Current message
-   * @param {Array} pastContext - Past context
-   * @returns {Object} Intent alignment analysis
-   * @private
-   */
-  _analyzeIntentAlignment(currentMessage, pastContext) {
-    if (pastContext.length === 0) return null;
-    
-    const lastMessage = pastContext[pastContext.length - 1];
-    const lastIntent = this._detectIntent(lastMessage.content || lastMessage.text || '');
-    const currentIntent = this._detectIntent(currentMessage);
-    
-    return {
-      previousIntent: lastIntent,
-      currentIntent: currentIntent,
-      intentAlignment: lastIntent === currentIntent,
-      intentProgression: lastIntent !== currentIntent
-    };
-  }
-
-  /**
-   * Analyze topic evolution in conversation
-   * @param {string} currentMessage - Current message
-   * @param {Array} pastContext - Past context
-   * @returns {Object} Topic evolution analysis
-   * @private
-   */
-  _analyzeTopicEvolution(currentMessage, pastContext) {
-    if (pastContext.length === 0) return null;
-    
-    const currentTopics = this._identifyTopicClusters(currentMessage.toLowerCase());
-    const previousTopics = pastContext.length > 0 ? 
-      this._identifyTopicClusters((pastContext[pastContext.length - 1].content || pastContext[pastContext.length - 1].text || '').toLowerCase()) : [];
-    
-    const newTopics = currentTopics.filter(topic => !previousTopics.includes(topic));
-    const continuingTopics = currentTopics.filter(topic => previousTopics.includes(topic));
-    
-    return {
-      newTopics: newTopics,
-      continuingTopics: continuingTopics,
-      topicShift: newTopics.length > 0 && continuingTopics.length === 0,
-      topicExpansion: continuingTopics.length > 0 && newTopics.length > 0,
-      topicContinuation: continuingTopics.length > 0 && newTopics.length === 0
-    };
-  }
-
-  /**
-   * Calculate contextual consistency
-   * @param {string} currentMessage - Current message
-   * @param {Array} pastContext - Past context
-   * @returns {number} Contextual consistency score (0-1)
-   * @private
-   */
-  _calculateContextualConsistency(currentMessage, pastContext) {
-    if (pastContext.length === 0) return 0;
-    
-    let consistencyScore = 0;
-    const currentLower = currentMessage.toLowerCase();
-    
-    // Check for references to previous content
-    for (let i = Math.max(0, pastContext.length - 3); i < pastContext.length; i++) {
-      const pastContent = (pastContext[i].content || pastContext[i].text || '').toLowerCase();
-      const words = pastContent.split(/\s+/);
-      
-      // Check if current message contains key words from recent past context
-      const matchingWords = words.filter(word => 
-        word.length > 3 && currentLower.includes(word)
-      ).length;
-      
-      consistencyScore += matchingWords / Math.max(1, words.length);
-    }
-    
-    return consistencyScore / Math.min(3, pastContext.length);
   }
 
   /**
@@ -904,26 +638,20 @@ export class ContextIntegrator {
   }
 
   /**
-   * Enhanced context integration with behavioral patterns
+   * Integrate context based on analysis results using sophisticated weighting
    * @param {string} currentMessage - Current user message
    * @param {Array} pastContext - Array of past context items
    * @param {Object} analysisResults - Results from contextual analysis
-   * @param {Object} languagePreferences - User's language preferences
    * @returns {Object} Integrated context with prioritization
    */
-  integrateContext(currentMessage, pastContext, analysisResults, languagePreferences = null) {
+  integrateContext(currentMessage, pastContext, analysisResults) {
     const integratedContext = {
       currentMessage,
       prioritizedContext: [],
       integratedPrompt: '',
       contextWeight: 0,
       integrationStrategy: '',
-      weightedContext: null,
-      // Enhanced fields
-      behavioralPatterns: analysisResults.behavioralPatterns || null,
-      emotionalFlow: analysisResults.emotionalFlow || null,
-      intentAlignment: analysisResults.intentAlignment || null,
-      topicEvolution: analysisResults.topicEvolution || null
+      weightedContext: null
     };
     
     // Create sophisticated weighting system
@@ -978,13 +706,11 @@ export class ContextIntegrator {
       integratedContext.prioritizedContext
     );
     
-    // Build integrated prompt with enhanced Islamic context integration
-    integratedContext.integratedPrompt = this._buildEnhancedIntegratedPrompt(
+    // Build integrated prompt
+    integratedContext.integratedPrompt = this._buildIntegratedPrompt(
       integratedContext.prioritizedContext,
       integratedContext.integrationStrategy,
-      weightedContext,
-      languagePreferences,
-      analysisResults
+      weightedContext
     );
     
     return integratedContext;
@@ -1009,16 +735,14 @@ export class ContextIntegrator {
   }
 
   /**
-   * Build enhanced integrated prompt from prioritized context
+   * Build integrated prompt from prioritized context
    * @param {Array} prioritizedContext - Array of prioritized context items
    * @param {string} strategy - Integration strategy used
    * @param {Object} weightedContext - Weighted context information
-   * @param {Object} languagePreferences - User's language preferences
-   * @param {Object} analysisResults - Contextual analysis results
-   * @returns {string} Enhanced integrated prompt
+   * @returns {string} Integrated prompt
    * @private
    */
-  _buildEnhancedIntegratedPrompt(prioritizedContext, strategy, weightedContext, languagePreferences = null, analysisResults) {
+  _buildIntegratedPrompt(prioritizedContext, strategy, weightedContext) {
     // Sort by priority (highest first)
     const sortedContext = [...prioritizedContext].sort((a, b) => b.priority - a.priority);
     
@@ -1068,60 +792,6 @@ export class ContextIntegrator {
     
     prompt += '3. AVOID: Do not summarize or repeat information from past context unless specifically requested\n';
     prompt += `4. PRIORITY: Current message takes ${(weightedContext.currentMessage.weight * 100).toFixed(1)}% priority, past context takes ${(weightedContext.overallWeights.pastContext * 100).toFixed(1)}% maximum\n`;
-    
-    // NEW: Add behavioral pattern instructions
-    if (analysisResults.emotionalFlow) {
-      prompt += `5. EMOTIONAL CONTEXT: Previous emotion was "${analysisResults.emotionalFlow.previousEmotion}", current emotion is "${analysisResults.emotionalFlow.currentEmotion}". Respond appropriately to emotional flow.\n`;
-    }
-    
-    if (analysisResults.intentAlignment) {
-      prompt += `6. INTENT ALIGNMENT: Previous intent was "${analysisResults.intentAlignment.previousIntent}", current intent is "${analysisResults.intentAlignment.currentIntent}". Maintain intent consistency.\n`;
-    }
-    
-    if (analysisResults.topicEvolution) {
-      if (analysisResults.topicEvolution.topicShift) {
-        prompt += '7. TOPIC EVOLUTION: This is a new topic. Provide a fresh perspective while maintaining Islamic principles.\n';
-      } else if (analysisResults.topicEvolution.topicExpansion) {
-        prompt += '7. TOPIC EVOLUTION: Expanding on previous topic. Build upon earlier discussion points.\n';
-      } else if (analysisResults.topicEvolution.topicContinuation) {
-        prompt += '7. TOPIC EVOLUTION: Continuing previous topic. Deepen the discussion with new insights.\n';
-      }
-    }
-    
-    // Add language preference instructions if available
-    if (languagePreferences && languagePreferences.user_preference) {
-      const userLanguage = languagePreferences.user_preference;
-      prompt += `8. LANGUAGE PREFERENCE: Respond in ${userLanguage} as specified in the user's profile.\n`;
-      
-      // Add contextual connection information
-      if (languagePreferences.learning_data && languagePreferences.learning_data.connectionType) {
-        const connectionType = languagePreferences.learning_data.connectionType;
-        switch (connectionType) {
-          case 'direct_response':
-            prompt += '9. CONTEXTUAL CONNECTION: This is a direct response to the previous message. Maintain consistency in tone and language.\n';
-            break;
-          case 'topic_continuation':
-            prompt += '9. CONTEXTUAL CONNECTION: This continues the ongoing topic. Build upon previous discussion points.\n';
-            break;
-          case 'content_reference':
-            prompt += '9. CONTEXTUAL CONNECTION: This references previous content. Ensure coherence with earlier explanations.\n';
-            break;
-          case 'contextual_consistency':
-            prompt += '9. CONTEXTUAL CONNECTION: Maintain contextual consistency with the ongoing conversation flow.\n';
-            break;
-        }
-      }
-    }
-    
-    // Add enhanced Islamic context integration with deeper semantic understanding
-    prompt += '\n**ISLAMIC CONTEXT ENHANCEMENT:**\n';
-    prompt += '- Always provide responses grounded in authentic Islamic sources (Quran, Hadith, scholarly consensus)\n';
-    prompt += '- When discussing Islamic jurisprudence, acknowledge different scholarly opinions when relevant\n';
-    prompt += '- Connect contemporary questions with Islamic principles and wisdom\n';
-    prompt += '- Ensure responses are both accurate and practically applicable\n';
-    prompt += '- Include at least one relevant Quranic verse in every response with proper context\n';
-    prompt += '- Reference authentic Hadith when relevant to support teachings\n';
-    prompt += '- Provide practical guidance that aligns with Islamic ethics and values\n';
     
     return prompt;
   }
@@ -1229,5 +899,3 @@ export class ContextIntegrator {
     };
   }
 }
-
-

@@ -54,62 +54,6 @@ export class LocationPrayerService {
       'kuala_lumpur': { lat: 3.1390, lng: 101.6869, timezone: 'Asia/Kuala_Lumpur' },
       'singapore': { lat: 1.3521, lng: 103.8198, timezone: 'Asia/Singapore' }
     };
-
-    // Different calculation methods with their parameters
-    this.calculationMethods = {
-      'MWL': {  // Muslim World League
-        name: 'Muslim World League',
-        fajr: 18,
-        isha: 17,
-        maghrib: 1, // minutes after sunset
-        asr: 1, // 1 for standard, 2 for Hanafi
-        midnight: 'standard'
-      },
-      'ISNA': {  // Islamic Society of North America
-        name: 'Islamic Society of North America',
-        fajr: 15,
-        isha: 15,
-        maghrib: 1,
-        asr: 1,
-        midnight: 'standard'
-      },
-      'Egypt': {  // Egyptian General Authority of Survey
-        name: 'Egyptian General Authority',
-        fajr: 19.5,
-        isha: 17.5,
-        maghrib: 1,
-        asr: 1,
-        midnight: 'standard'
-      },
-      'Makkah': {  // Umm al-Qura University, Makkah
-        name: 'Umm al-Qura University, Makkah',
-        fajr: 18.5,
-        isha: '90min', // 90 minutes after Maghrib
-        maghrib: 1,
-        asr: 1,
-        midnight: 'standard'
-      },
-      'Karachi': {  // University of Islamic Sciences, Karachi
-        name: 'University of Islamic Sciences, Karachi',
-        fajr: 18,
-        isha: 18,
-        maghrib: 1,
-        asr: 1,
-        midnight: 'standard'
-      }
-    };
-
-    // Default calculation method
-    this.defaultCalculationMethod = 'MWL';
-  }
-
-  // Helper functions for astronomical calculations
-  deg2rad(deg) {
-    return deg * Math.PI / 180;
-  }
-
-  rad2deg(rad) {
-    return rad * 180 / Math.PI;
   }
 
   /**
@@ -310,36 +254,6 @@ export class LocationPrayerService {
   }
 
   /**
-   * Get timezone offset in hours for the given timezone and date
-   * @param {string} timezone - IANA timezone name
-   * @param {Date} date - The date
-   * @returns {number} Offset in hours
-   */
-  getTimezoneOffset(timezone, date) {
-    try {
-      const testDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0));
-      const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        timeZoneName: 'shortOffset'
-      });
-      const parts = formatter.formatToParts(testDate);
-      const tzPart = parts.find(p => p.type === 'timeZoneName');
-      if (tzPart) {
-        let offsetStr = tzPart.value.replace('GMT', '').replace(':', ''); // e.g., "+0300"
-        const sign = offsetStr.startsWith('+') ? 1 : (offsetStr.startsWith('-') ? -1 : 0);
-        if (sign === 0) return 0;
-        const hours = parseInt(offsetStr.substring(1, 3));
-        const mins = parseInt(offsetStr.substring(3, 5)) || 0;
-        return sign * (hours + mins / 60);
-      }
-      return 0;
-    } catch (e) {
-      console.error('Timezone offset calculation error:', e);
-      return 0;
-    }
-  }
-
-  /**
    * Get default location (Makkah)
    * @returns {Object} Default location data
    */
@@ -358,247 +272,7 @@ export class LocationPrayerService {
   }
 
   /**
-   * Calculate Julian Day Number for the given UTC date at 0h
-   * @param {Date} date - The date
-   * @returns {number} Julian Day Number
-   */
-  julianDate(date) {
-    let year = date.getUTCFullYear();
-    let month = date.getUTCMonth() + 1;
-    let day = date.getUTCDate();
-
-    if (month <= 2) {
-      year -= 1;
-      month += 12;
-    }
-
-    const a = Math.floor(year / 100);
-    const b = 2 - a + Math.floor(a / 4);
-
-    return Math.floor(365.25 * (year + 4716)) + Math.floor(30.6001 * (month + 1)) + day + b - 1524;
-  }
-
-  /**
-   * Calculate Sun's declination and equation of time
-   * @param {number} jd - Julian Day Number
-   * @returns {Object} {D: declination in degrees, EqT: equation of time in hours}
-   */
-  sunPosition(jd) {
-    const d = jd - 2451545.0;
-    const g = 357.529 + 0.98560028 * d;
-    const q = 280.459 + 0.98564736 * d;
-    const L = q + 1.915 * Math.sin(this.deg2rad(g)) + 0.020 * Math.sin(this.deg2rad(2 * g));
-    const e = 23.439 - 0.00000036 * d;
-    const RA = this.rad2deg(Math.atan2(Math.cos(this.deg2rad(e)) * Math.sin(this.deg2rad(L)), Math.cos(this.deg2rad(L)))) / 15;
-    const D = this.rad2deg(Math.asin(Math.sin(this.deg2rad(e)) * Math.sin(this.deg2rad(L))));
-    const EqT = q / 15 - RA;
-    return { D, EqT };
-  }
-
-  /**
-   * Calculate time offset for a given angle (used for sunrise, fajr, etc.)
-   * @param {number} angle - Angle in degrees
-   * @param {number} lat - Latitude
-   * @param {number} D - Declination
-   * @returns {number} Time offset in hours
-   */
-  timeOffset(angle, lat, D) {
-    const arg = (Math.sin(this.deg2rad(angle)) - Math.sin(this.deg2rad(lat)) * Math.sin(this.deg2rad(D))) /
-                (Math.cos(this.deg2rad(lat)) * Math.cos(this.deg2rad(D)));
-    const clampedArg = Math.max(-1, Math.min(1, arg));
-    const acosAngle = Math.acos(clampedArg);
-    return this.rad2deg(acosAngle) / 15;
-  }
-
-  /**
-   * Calculate Asr time offset
-   * @param {number} lat - Latitude
-   * @param {number} D - Declination
-   * @param {number} factor - 1 for standard, 2 for Hanafi
-   * @returns {number} Time offset in hours
-   */
-  asrTimeOffset(lat, D, factor) {
-    const phi = lat - D;
-    const tanPhi = Math.tan(this.deg2rad(Math.abs(phi)));
-    const declitan = 1.0 / (factor + tanPhi * tanPhi);
-    const angle = this.atan(declitan);
-    const arg = (Math.sin(angle) - Math.sin(this.deg2rad(lat)) * Math.sin(this.deg2rad(D))) /
-                (Math.cos(this.deg2rad(lat)) * Math.cos(this.deg2rad(D)));
-    const clampedArg = Math.max(-1, Math.min(1, arg));
-    const acosAngle = Math.acos(clampedArg);
-    return this.rad2deg(acosAngle) / 15;
-  }
-
-  atan(declitan) {
-    return Math.atan(declitan);
-  }
-
-  /**
-   * Format hours to HH:MM string
-   * @param {number} hours - Hours (can be >24 or <0)
-   * @returns {string} Formatted time
-   */
-  timeToString(hours) {
-    let h = ((hours % 24) + 24) % 24;
-    let m = Math.floor((h - Math.floor(h)) * 60);
-    h = Math.floor(h);
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-  }
-
-  /**
-   * Calculate prayer times using astronomical calculations with specific method
-   * @param {Object} location - Location data
-   * @param {Date} date - Date for prayer times
-   * @param {number} timezoneOffset - Timezone offset in hours
-   * @param {string} method - Calculation method (default: MWL)
-   * @returns {Object} Prayer times with method information
-   */
-  calculatePrayerTimes(location, date, timezoneOffset, method = this.defaultCalculationMethod) {
-    // Get calculation parameters for the specified method
-    const params = this.calculationMethods[method] || this.calculationMethods[this.defaultCalculationMethod];
-    
-    const jd = this.julianDate(date);
-    const { D, EqT } = this.sunPosition(jd);
-    const lat = location.lat;
-    const lng = location.lng;
-    const timeZone = timezoneOffset;
-
-    const dhuhr = 12 + timeZone - lng / 15 - EqT;
-    const sunriseAngle = 0.8333;
-    const sunriseOffset = this.timeOffset(sunriseAngle, lat, D);
-    const sunsetOffset = this.timeOffset(sunriseAngle, lat, D);
-    
-    // Calculate Fajr and Isha based on method parameters
-    const fajrOffset = this.timeOffset(params.fajr, lat, D);
-    
-    let ishaOffset;
-    if (params.isha === '90min') {
-      // Special case for Makkah method where Isha is 90 minutes after Maghrib
-      const maghribOffset = sunsetOffset + params.maghrib / 60;
-      const maghrib = dhuhr + maghribOffset;
-      const ishaTime = maghrib + 1.5; // 90 minutes = 1.5 hours
-      ishaOffset = ishaTime - dhuhr;
-    } else {
-      ishaOffset = this.timeOffset(params.isha, lat, D);
-    }
-    
-    const asrOffset = this.asrTimeOffset(lat, D, params.asr);
-    const maghribOffset = sunsetOffset + params.maghrib / 60;
-
-    const fajr = dhuhr - fajrOffset;
-    const sunrise = dhuhr - sunriseOffset;
-    const sunset = dhuhr + sunsetOffset;
-    const asr = dhuhr + asrOffset;
-    const maghrib = dhuhr + maghribOffset;
-    const isha = dhuhr + ishaOffset;
-
-    return {
-      date: date.toISOString().split('T')[0],
-      location: {
-        city: location.city,
-        country: location.country,
-        lat: location.lat,
-        lng: location.lng
-      },
-      times: {
-        fajr: this.timeToString(fajr),
-        sunrise: this.timeToString(sunrise),
-        dhuhr: this.timeToString(dhuhr),
-        asr: this.timeToString(asr),
-        maghrib: this.timeToString(maghrib),
-        isha: this.timeToString(isha)
-      },
-      timezone: location.timezone || 'UTC',
-      calculationMethod: method,
-      calculationMethodName: params.name
-    };
-  }
-
-  /**
-   * Calculate prayer times for a location with multiple methods for comparison
-   * @param {Object} location - Location data
-   * @param {Date} date - Date for prayer times (default: today)
-   * @returns {Promise<Object>} Prayer times with method comparison
-   */
-  async getPrayerTimesWithMethods(location, date = new Date()) {
-    try {
-      const dateKey = date.toDateString();
-      const geoKey = this._geohash(location.lat, location.lng, this._geohashPrecision);
-      const cacheKey = `${geoKey}:${dateKey}:methods`;
-      
-      // Check cache first
-      if (this.prayerTimeCache.has(cacheKey)) {
-        const cached = this.prayerTimeCache.get(cacheKey);
-        if (Date.now() - cached.timestamp < this.cacheTimeout) {
-          return cached.data;
-        }
-      }
-      
-      // Compute timezone offset
-      const timezoneOffset = this.getTimezoneOffset(location.timezone, date);
-      
-      // Try to get prayer times from Times Prayer website first
-      try {
-        const timesPrayerData = await this.timesPrayerScraper.getPrayerTimes(location, date);
-        if (timesPrayerData) {
-          // Add method information
-          const result = {
-            ...timesPrayerData,
-            source: 'timesprayer.org',
-            calculationMethod: 'WebsiteProvided',
-            calculationMethodName: 'TimesPrayer.org Provided Times'
-          };
-          
-          // Cache the result
-          this.prayerTimeCache.set(cacheKey, {
-            data: result,
-            timestamp: Date.now()
-          });
-          if (this.prayerTimeCache.size > this.prayerCacheCapacity) {
-            const oldestKey = this.prayerTimeCache.keys().next().value;
-            if (oldestKey) this.prayerTimeCache.delete(oldestKey);
-          }
-          return result;
-        }
-      } catch (error) {
-        console.log('Times Prayer scraper failed:', error.message);
-      }
-      
-      // Calculate times using multiple methods for comparison
-      const methodsComparison = {};
-      for (const [methodName, methodParams] of Object.entries(this.calculationMethods)) {
-        methodsComparison[methodName] = this.calculatePrayerTimes(location, date, timezoneOffset, methodName);
-      }
-      
-      // Return the default method as primary with comparison data
-      const defaultMethodResult = methodsComparison[this.defaultCalculationMethod];
-      const result = {
-        ...defaultMethodResult,
-        methodsComparison: methodsComparison
-      };
-      
-      // Cache the result
-      this.prayerTimeCache.set(cacheKey, {
-        data: result,
-        timestamp: Date.now()
-      });
-      if (this.prayerTimeCache.size > this.prayerCacheCapacity) {
-        const oldestKey = this.prayerTimeCache.keys().next().value;
-        if (oldestKey) this.prayerTimeCache.delete(oldestKey);
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('Prayer time calculation error:', error);
-      // Return default prayer times for Makkah
-      const defaultLocation = this.islamicCities.makkah;
-      const defaultOffset = this.getTimezoneOffset(defaultLocation.timezone, date);
-      return this.calculatePrayerTimes(defaultLocation, date, defaultOffset);
-    }
-  }
-
-  /**
-   * Calculate prayer times for a location (backward compatibility)
+   * Calculate prayer times for a location
    * @param {Object} location - Location data
    * @param {Date} date - Date for prayer times (default: today)
    * @returns {Promise<Object>} Prayer times
@@ -616,9 +290,6 @@ export class LocationPrayerService {
           return cached.data;
         }
       }
-      
-      // Compute timezone offset
-      const timezoneOffset = this.getTimezoneOffset(location.timezone, date);
       
       // Try to get prayer times from Times Prayer website first
       try {
@@ -640,7 +311,7 @@ export class LocationPrayerService {
       }
       
       // Fallback to calculation if web scraping fails
-      const prayerTimes = this.calculatePrayerTimes(location, date, timezoneOffset);
+      const prayerTimes = this.calculatePrayerTimes(location, date);
       
       // Cache the result
       this.prayerTimeCache.set(cacheKey, {
@@ -656,10 +327,46 @@ export class LocationPrayerService {
     } catch (error) {
       console.error('Prayer time calculation error:', error);
       // Return default prayer times for Makkah
-      const defaultLocation = this.islamicCities.makkah;
-      const defaultOffset = this.getTimezoneOffset(defaultLocation.timezone, date);
-      return this.calculatePrayerTimes(defaultLocation, date, defaultOffset);
+      return this.calculatePrayerTimes(this.islamicCities.makkah, date);
     }
+  }
+
+  /**
+   * Calculate prayer times using astronomical calculations
+   * @param {Object} location - Location data
+   * @param {Date} date - Date for prayer times
+   * @returns {Object} Prayer times
+   */
+  calculatePrayerTimes(location, date) {
+    // Simplified prayer time calculation
+    // In a real implementation, you would use a proper astronomical library
+    const now = date || new Date();
+    const hours = now.getHours();
+    
+    // These are placeholder times - in a real implementation, you would calculate based on:
+    // - Location coordinates (latitude, longitude)
+    // - Date (day of year)
+    // - Astronomical calculations for sunrise, sunset, etc.
+    
+    return {
+      date: now.toISOString().split('T')[0],
+      location: {
+        city: location.city,
+        country: location.country,
+        lat: location.lat,
+        lng: location.lng
+      },
+      times: {
+        fajr: `${4 + Math.floor(Math.random() * 2)}:${30 + Math.floor(Math.random() * 30)}`.slice(0, 5),
+        sunrise: `${6 + Math.floor(Math.random() * 2)}:${0 + Math.floor(Math.random() * 60)}`.slice(0, 5),
+        dhuhr: `${12 + Math.floor(Math.random() * 2)}:${0 + Math.floor(Math.random() * 60)}`.slice(0, 5),
+        asr: `${15 + Math.floor(Math.random() * 2)}:${0 + Math.floor(Math.random() * 60)}`.slice(0, 5),
+        maghrib: `${18 + Math.floor(Math.random() * 2)}:${0 + Math.floor(Math.random() * 60)}`.slice(0, 5),
+        isha: `${20 + Math.floor(Math.random() * 2)}:${0 + Math.floor(Math.random() * 60)}`.slice(0, 5)
+      },
+      timezone: location.timezone || 'UTC',
+      calculationMethod: 'approximate'
+    };
   }
 
   /**

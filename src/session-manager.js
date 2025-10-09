@@ -59,12 +59,9 @@ export class SessionManager {
     const formattedMessages = [];
     
     recentMessages.forEach(msg => {
-      // Check if message has content before accessing it
-      if (msg.content) {
-        formattedMessages.push({
-          parts: [{ text: `[${msg.role.toUpperCase()}] ${msg.content}` }]
-        });
-      }
+      formattedMessages.push({
+        parts: [{ text: `[${msg.role.toUpperCase()}] ${msg.content}` }]
+      });
     });
 
     return formattedMessages;
@@ -78,7 +75,7 @@ export class SessionManager {
     // Simple summary of older messages
     const olderMessages = sessionHistory.slice(0, -5);
     const topics = olderMessages
-      .filter(msg => msg.role === 'user' && msg.content)
+      .filter(msg => msg.role === 'user')
       .map(msg => msg.content.substring(0, 50))
       .slice(0, 3);
 

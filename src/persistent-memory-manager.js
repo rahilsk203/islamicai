@@ -32,9 +32,6 @@ export class PersistentMemoryManager {
     this.semanticIndexCacheCap = 2000;
     this.recentRecordCap = 128;
     this.recallCacheCap = 1000;
-
-    // Connection pooling for performance
-    this.connectionPool = [];
   }
 
   // ---- Key helpers ----

@@ -95,22 +95,6 @@ export class AdaptiveLanguageSystem {
     // Enhanced learning parameters for better adaptation
     this.confidenceThreshold = 0.6; // Increased threshold for more confident decisions
     this.minSamplesForLearning = 2; // Need more samples for learning
-    
-    // Connection pooling for performance
-    this.connectionPool = [];
-    
-    // Enhanced user behavior tracking
-    this.userBehaviorPatterns = new Map();
-    this.sessionInteractionHistory = new Map();
-    
-    // Advanced pattern recognition for user preferences
-    this.userPreferencePatterns = {
-      responseLength: new Map(), // tracks user preference for brief/detailed responses
-      questionTypes: new Map(), // tracks types of questions user asks
-      interactionFrequency: new Map(), // tracks how often user interacts
-      topicInterests: new Map(), // tracks topics user frequently discusses
-      responseTimeExpectations: new Map() // tracks user's expected response speed
-    };
   }
 
   /**
@@ -250,27 +234,6 @@ export class AdaptiveLanguageSystem {
       scores.urdu = (scores.urdu || 0) + (urduMatches.length / words.length);
     }
     
-    // Enhanced Hinglish detection: Look for mixed patterns
-    const hinglishIndicators = [
-      'kya', 'kaise', 'kab', 'kahan', 'kyun', 'bhai', 'sister', 'brother', 
-      'waqt', 'samay', 'abhi', 'tuu', 'bataa', 'sakte', 'hai', 'kaya', 
-      'halat', 'thik', 'hoon', 'hun', 'hain', 'kasa', 'assalamu', 'alaikum', 
-      'salam', 'allah', 'islam', 'quran', 'mein', 'se', 'ko', 'par', 'aur', 
-      'ya', 'lekin', 'kyunki', 'kitna', 'kitni', 'kitne'
-    ];
-    
-    let hinglishIndicatorCount = 0;
-    for (const indicator of hinglishIndicators) {
-      if (lowerMessage.includes(indicator)) {
-        hinglishIndicatorCount++;
-      }
-    }
-    
-    // Boost Hinglish score if we find multiple indicators
-    if (hinglishIndicatorCount > 2) {
-      scores.hinglish = (scores.hinglish || 0) + (hinglishIndicatorCount * 0.3);
-    }
-    
     // Apply weights
     if (scores.hinglish) scores.hinglish *= this.languageModels.hinglish.weight;
     if (scores.hindi) scores.hindi *= this.languageModels.hindi.weight;
@@ -377,12 +340,91 @@ export class AdaptiveLanguageSystem {
   }
 
   /**
-   * Detect language switch command (alias for backward compatibility)
-   * @param {string} message - User message
-   * @returns {Object|null} Switch command info or null
+   * Simplified adaptation method for faster processing
+   * @param {string} userMessage - User's message
+   * @param {string} sessionId - Session identifier
+   * @param {Object} context - Additional context
+   * @returns {Object} Language adaptation information
    */
-  detectLanguageSwitchCommand(message) {
-    return this.detectSwitchCommand(message);
+  adaptLanguage(userMessage, sessionId, context = {}) {
+    // Check for explicit language switch commands first
+    const switchCommand = this.detectSwitchCommand(userMessage);
+    if (switchCommand) {
+      this.updateUserPreference(sessionId, switchCommand.language, 0.95, 'explicit_command');
+      return {
+        detectedLanguage: switchCommand.language,
+        confidence: 0.95,
+        shouldAdapt: true,
+        adaptationType: 'explicit_command',
+        userPreference: switchCommand.language,
+        learningData: { method: 'command', confidence: 0.95 }
+      };
+    }
+    
+    // Get user's language preference from context or storage
+    const userPrefData = this.getUserPreference(sessionId);
+    const userPreference = userPrefData ? userPrefData.language : 'english';
+    
+    // Detect language in the current message
+    const detectionResult = this.analyzeLanguageStyle(userMessage);
+    
+    // Check for conversational context clues (greetings, personal check-ins)
+    const isGreeting = this.isGreeting(userMessage);
+    const isPersonalCheckIn = this.isPersonalCheckIn(userMessage);
+    
+    // NEW: For high-confidence detections, respond in the detected language
+    if (detectionResult.confidence > 0.7) {
+      console.log(`High confidence language detection: ${detectionResult.language} (${detectionResult.confidence})`);
+      return {
+        detectedLanguage: detectionResult.language,
+        confidence: detectionResult.confidence,
+        shouldAdapt: true,
+        adaptationType: 'high_confidence_detection',
+        userPreference: detectionResult.language, // Respond in detected language
+        learningData: { method: 'high_confidence_detection', confidence: detectionResult.confidence }
+      };
+    }
+    
+    // If this is a greeting or personal check-in, maintain natural conversation flow
+    if (isGreeting || isPersonalCheckIn) {
+      // For natural conversation flow, respond in the same style as the user
+      return {
+        detectedLanguage: detectionResult.language,
+        confidence: detectionResult.confidence,
+        shouldAdapt: true,
+        adaptationType: 'conversational_flow',
+        userPreference: detectionResult.language,
+        learningData: { method: 'conversational_flow', confidence: detectionResult.confidence }
+      };
+    }
+    
+    // Use detected language if confidence is high
+    if (detectionResult.confidence > this.confidenceThreshold) {
+      // Update preference if consistently using the same language
+      if (detectionResult.language === userPreference || 
+          (context.previousMessages && this.isConsistentLanguage(context.previousMessages, detectionResult.language))) {
+        this.updateUserPreference(sessionId, detectionResult.language, detectionResult.confidence, 'automatic_detection');
+      }
+      
+      return {
+        detectedLanguage: detectionResult.language,
+        confidence: detectionResult.confidence,
+        shouldAdapt: detectionResult.language !== userPreference,
+        adaptationType: 'automatic_detection',
+        userPreference: detectionResult.language, // Respond in detected language
+        learningData: { method: 'detection', confidence: detectionResult.confidence }
+      };
+    }
+    
+    // Fall back to user preference
+    return {
+      detectedLanguage: userPreference,
+      confidence: 0.7,
+      shouldAdapt: false,
+      adaptationType: 'user_preference',
+      userPreference: userPreference,
+      learningData: { method: 'preference', confidence: 0.7 }
+    };
   }
 
   /**
@@ -448,150 +490,6 @@ export class AdaptiveLanguageSystem {
         samples: userPreference?.samples || 0,
         confidence: currentConfidence,
         adaptationReason: 'learning_mode'
-      }
-    };
-  }
-
-  /**
-   * Enhanced adaptation method with behavior pattern analysis
-   * @param {string} userMessage - User's message
-   * @param {string} sessionId - Session identifier
-   * @param {Object} context - Additional context
-   * @returns {Object} Language adaptation information
-   */
-  adaptLanguage(userMessage, sessionId, context = {}) {
-    // Check for explicit language switch commands first
-    const switchCommand = this.detectSwitchCommand(userMessage);
-    if (switchCommand) {
-      this.updateUserPreference(sessionId, switchCommand.language, 0.95, 'explicit_command');
-      return {
-        detectedLanguage: switchCommand.language,
-        confidence: 0.95,
-        shouldAdapt: true,
-        adaptationType: 'explicit_command',
-        userPreference: switchCommand.language,
-        learningData: { method: 'command', confidence: 0.95 }
-      };
-    }
-    
-    // Get user's language preference from context or storage
-    const userPrefData = this.getUserPreference(sessionId);
-    const userPreference = userPrefData ? userPrefData.language : 'english';
-    
-    // Detect language in the current message
-    const detectionResult = this.analyzeLanguageStyle(userMessage);
-    
-    // Check for conversational context clues (greetings, personal check-ins)
-    const isGreeting = this.isGreeting(userMessage);
-    const isPersonalCheckIn = this.isPersonalCheckIn(userMessage);
-    
-    // Check for contextual connections with previous messages
-    const contextualConnection = this.analyzeContextualConnection(userMessage, context.previousMessages || []);
-    
-    // NEW: Analyze user behavior patterns
-    const behaviorAnalysis = this.analyzeUserBehavior(sessionId, userMessage, context);
-    
-    // NEW: If there's a strong contextual connection, maintain consistency
-    if (contextualConnection.isStrongConnection) {
-      return {
-        detectedLanguage: contextualConnection.suggestedLanguage,
-        confidence: contextualConnection.confidence,
-        shouldAdapt: true,
-        adaptationType: 'contextual_consistency',
-        userPreference: contextualConnection.suggestedLanguage,
-        learningData: { 
-          method: 'contextual_connection', 
-          confidence: contextualConnection.confidence,
-          connectionType: contextualConnection.connectionType,
-          behaviorPatterns: behaviorAnalysis
-        }
-      };
-    }
-    
-    // NEW: For high-confidence detections, respond in the detected language
-    if (detectionResult.confidence > 0.7) {
-      console.log(`High confidence language detection: ${detectionResult.language} (${detectionResult.confidence})`);
-      return {
-        detectedLanguage: detectionResult.language,
-        confidence: detectionResult.confidence,
-        shouldAdapt: true,
-        adaptationType: 'high_confidence_detection',
-        userPreference: detectionResult.language, // Respond in detected language
-        learningData: { 
-          method: 'high_confidence_detection', 
-          confidence: detectionResult.confidence,
-          behaviorPatterns: behaviorAnalysis
-        }
-      };
-    }
-    
-    // If this is a greeting or personal check-in, maintain natural conversation flow
-    if (isGreeting || isPersonalCheckIn) {
-      // For natural conversation flow, respond in the same style as the user
-      return {
-        detectedLanguage: detectionResult.language,
-        confidence: detectionResult.confidence,
-        shouldAdapt: true,
-        adaptationType: 'conversational_flow',
-        userPreference: detectionResult.language,
-        learningData: { 
-          method: 'conversational_flow', 
-          confidence: detectionResult.confidence,
-          behaviorPatterns: behaviorAnalysis
-        }
-      };
-    }
-    
-    // Use detected language if confidence is high
-    if (detectionResult.confidence > this.confidenceThreshold) {
-      // Update preference if consistently using the same language
-      if (detectionResult.language === userPreference || 
-          (context.previousMessages && this.isConsistentLanguage(context.previousMessages, detectionResult.language))) {
-        this.updateUserPreference(sessionId, detectionResult.language, detectionResult.confidence, 'automatic_detection');
-      }
-      
-      return {
-        detectedLanguage: detectionResult.language,
-        confidence: detectionResult.confidence,
-        shouldAdapt: detectionResult.language !== userPreference,
-        adaptationType: 'automatic_detection',
-        userPreference: detectionResult.language, // Respond in detected language
-        learningData: { 
-          method: 'detection', 
-          confidence: detectionResult.confidence,
-          behaviorPatterns: behaviorAnalysis
-        }
-      };
-    }
-    
-    // If user has explicitly set a language preference, use it
-    const { previousMessages = [], userProfile = {}, timestamp = Date.now(), userLanguagePreference = null } = context;
-    if (userLanguagePreference) {
-      return {
-        detectedLanguage: userLanguagePreference.toLowerCase(),
-        confidence: 1.0,
-        shouldAdapt: true,
-        adaptationType: 'user_profile_preference',
-        userPreference: userLanguagePreference,
-        learningData: { 
-          method: 'user_profile_preference', 
-          confidence: 1.0,
-          behaviorPatterns: behaviorAnalysis
-        }
-      };
-    }
-    
-    // Fall back to user preference with behavior analysis
-    return {
-      detectedLanguage: userPreference,
-      confidence: 0.7,
-      shouldAdapt: false,
-      adaptationType: 'user_preference',
-      userPreference: userPreference,
-      learningData: { 
-        method: 'preference', 
-        confidence: 0.7,
-        behaviorPatterns: behaviorAnalysis
       }
     };
   }
@@ -713,40 +611,58 @@ export class AdaptiveLanguageSystem {
   }
 
   /**
-   * Get response instructions based on language adaptation
-   * @param {string} detectedLanguage - Detected language
-   * @param {Object} adaptation - Language adaptation result
-   * @returns {string} Response instructions
+   * Get language-specific response instructions
+   * @param {string} language - Target language
+   * @param {Object} adaptationData - Adaptation data
+   * @returns {Object} Response instructions
    */
-  getResponseInstructions(detectedLanguage, adaptation) {
-    // If user has a language preference, use it
-    if (adaptation.userPreference) {
-      const lang = adaptation.userPreference.toLowerCase();
-      switch (lang) {
-        case 'hinglish':
-          return "Respond in Hinglish (natural mix of Hindi and English) with authentic Islamic terminology. Use casual, friendly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
-        case 'hindi':
-          return "Respond in Hindi with authentic Islamic terminology in Arabic script where appropriate. Use formal yet approachable tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
-        case 'urdu':
-          return "Respond in Urdu with authentic Islamic terminology in Arabic script. Use formal and respectful tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
-        case 'english':
-          return "Respond in English with authentic Islamic terminology in Arabic script where appropriate. Use clear, scholarly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
-        default:
-          return "Respond in English with authentic Islamic terminology in Arabic script where appropriate. Use clear, scholarly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
+  getResponseInstructions(language, adaptationData = {}) {
+    const instructions = {
+      english: {
+        instruction: "RESPOND IN ENGLISH ONLY. Use proper English grammar and Islamic terminology in English.",
+        greeting: "Assalamu Alaikum!",
+        ending: "Allah knows best 🤲",
+        style: "formal"
+      },
+      
+      hinglish: {
+        instruction: "RESPOND IN HINGLISH ONLY (Hindi + English mix). Use natural Hinglish that mixes Hindi and English words as commonly spoken. Use Roman script for Hindi words. Maintain a friendly, conversational tone while being respectful and scholarly. Example: 'Assalamu Alaikum! Kaise ho aap? Main IslamicAI hoon, aapka Islamic Scholar AI assistant. Aapko Qur'an, Hadith, Tafseer, Fiqh, ya Seerah se related koi bhi madad chahiye toh batao. Main yahan hoon aapki help karne ke liye. Allah aapko khush rakhe! 🤲'",
+        greeting: "Assalamu Alaikum!",
+        ending: "Allah sabse behtar jaanta hai 🤲",
+        style: "conversational"
+      },
+      
+      hindi: {
+        instruction: "RESPOND IN HINDI ONLY (हिंदी में). Use proper Hindi grammar and Islamic terminology in Hindi. Use Devanagari script.",
+        greeting: "अस्सलामु अलैकुम!",
+        ending: "अल्लाह सबसे बेहतर जानता है 🤲",
+        style: "formal"
+      },
+      
+      bengali: {
+        instruction: "RESPOND IN BENGALI ONLY (বাংলায়). Use proper Bengali grammar and Islamic terminology in Bengali. Use Bengali script.",
+        greeting: "আসসালামু আলাইকুম!",
+        ending: "আল্লাহ সবচেয়ে ভালো জানেন 🤲",
+        style: "formal"
+      },
+      
+      urdu: {
+        instruction: "RESPOND IN URDU ONLY (اردو میں). Use proper Urdu grammar and Islamic terminology in Urdu. Use Arabic script.",
+        greeting: "السلام علیکم!",
+        ending: "اللہ سب سے بہتر جانتا ہے 🤲",
+        style: "formal"
       }
-    }
+    };
+
+    const baseInstruction = instructions[language] || instructions.english;
     
-    // Otherwise, use detected language
-    switch (detectedLanguage) {
-      case 'hinglish':
-        return "Respond in Hinglish (natural mix of Hindi and English) with authentic Islamic terminology. Use casual, friendly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
-      case 'hindi':
-          return "Respond in Hindi with authentic Islamic terminology in Arabic script where appropriate. Use formal yet approachable tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
-      case 'urdu':
-          return "Respond in Urdu with authentic Islamic terminology in Arabic script. Use formal and respectful tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
-      default:
-          return "Respond in English with authentic Islamic terminology in Arabic script where appropriate. Use clear, scholarly tone with correct grammar and natural flow. Maintain context and provide comprehensive guidance.";
-    }
+    return {
+      ...baseInstruction,
+      adaptationType: adaptationData.adaptationType,
+      confidence: adaptationData.confidence,
+      userPreference: adaptationData.userPreference,
+      learningData: adaptationData.learningData
+    };
   }
 
   /**
@@ -802,496 +718,20 @@ export class AdaptiveLanguageSystem {
     return checkIns.some(checkIn => lowerMessage.includes(checkIn));
   }
 
-  /**
-   * Check if language is consistent across previous messages
-   * @param {Array} previousMessages - Previous messages in session
-   * @param {string} language - Language to check consistency for
-   * @returns {boolean} Whether language is consistent
-   */
+  // Check if language is consistent across previous messages
   isConsistentLanguage(previousMessages, language) {
-    // Check if previousMessages is an array
-    if (!Array.isArray(previousMessages) || previousMessages.length === 0) return false;
+    if (!previousMessages || previousMessages.length === 0) return false;
     
     // Count how many previous messages match the detected language
     let matchCount = 0;
     previousMessages.forEach(msg => {
-      // Check if message has content before accessing it
-      if (msg && msg.content) {
-        const detection = this.analyzeLanguageStyle(msg.content);
-        if (detection.language === language) {
-          matchCount++;
-        }
+      const detection = this.analyzeLanguageStyle(msg.content);
+      if (detection.language === language) {
+        matchCount++;
       }
     });
     
     // If more than 60% of recent messages match, consider it consistent
     return matchCount / previousMessages.length > 0.6;
   }
-
-  /**
-   * Analyze contextual connection between current message and previous messages
-   * @param {string} currentMessage - Current user message
-   * @param {Array} previousMessages - Previous messages in session
-   * @returns {Object} Connection analysis result
-   */
-  analyzeContextualConnection(currentMessage, previousMessages) {
-    // If no previous messages or not an array, no connection possible
-    if (!Array.isArray(previousMessages) || previousMessages.length === 0) {
-      return {
-        isStrongConnection: false,
-        suggestedLanguage: null,
-        confidence: 0,
-        connectionType: null
-      };
-    }
-
-    // Get the most recent message
-    const lastMessage = previousMessages[previousMessages.length - 1];
-    
-    // Check if current message is a direct continuation or response to the last message
-    const isDirectResponse = this.isDirectResponse(currentMessage, lastMessage);
-    
-    if (isDirectResponse) {
-      // Use the language of the last message for consistency
-      // Check if lastMessage exists and has content
-      if (lastMessage && lastMessage.content) {
-        const lastMessageLanguage = this.analyzeLanguageStyle(lastMessage.content);
-        return {
-          isStrongConnection: true,
-          suggestedLanguage: lastMessageLanguage.language,
-          confidence: 0.9,
-          connectionType: 'direct_response'
-        };
-      } else {
-        return {
-          isStrongConnection: false,
-          suggestedLanguage: null,
-          confidence: 0,
-          connectionType: null
-        };
-      }
-    }
-    
-    // Check for topic continuity
-    const isTopicContinuation = this.isTopicContinuation(currentMessage, previousMessages);
-    
-    if (isTopicContinuation) {
-      // Use the dominant language in recent messages
-      const dominantLanguage = this.getDominantLanguage(previousMessages);
-      return {
-        isStrongConnection: true,
-        suggestedLanguage: dominantLanguage.language,
-        confidence: 0.8,
-        connectionType: 'topic_continuation'
-      };
-    }
-    
-    // Check for reference to previous content
-    const hasReference = this.hasReferenceToPreviousContent(currentMessage, previousMessages);
-    
-    if (hasReference) {
-      // Use the language of the referenced message
-      const referencedLanguage = this.getReferencedLanguage(currentMessage, previousMessages);
-      return {
-        isStrongConnection: true,
-        suggestedLanguage: referencedLanguage.language,
-        confidence: 0.85,
-        connectionType: 'content_reference'
-      };
-    }
-    
-    return {
-      isStrongConnection: false,
-      suggestedLanguage: null,
-      confidence: 0,
-      connectionType: null
-    };
-  }
-
-  /**
-   * Check if current message is a direct response to the last message
-   * @param {string} currentMessage - Current user message
-   * @param {Object} lastMessage - Last message in conversation
-   * @returns {boolean} Whether it's a direct response
-   */
-  isDirectResponse(currentMessage, lastMessage) {
-    // Check if lastMessage exists and has content
-    if (!lastMessage || !lastMessage.content) {
-      return false;
-    }
-    
-    const currentLower = currentMessage.toLowerCase();
-    const lastLower = lastMessage.content.toLowerCase();
-    
-    // Common response indicators
-    const responseIndicators = [
-      'yes', 'no', 'yeah', 'nah', 'okay', 'ok', 'right', 'exactly', 
-      'haan', 'ji haan', 'bilkul', 'han', 'nhi', 'nahi'
-    ];
-    
-    // Check if current message starts with a response indicator
-    for (const indicator of responseIndicators) {
-      if (currentLower.startsWith(indicator + ' ') || currentLower === indicator) {
-        return true;
-      }
-    }
-    
-    // Check if last message was a question
-    if (lastLower.includes('?') || lastLower.endsWith('؟') || 
-        lastLower.includes('kya') || lastLower.includes('kyun') || 
-        lastLower.includes('kaise') || lastLower.includes('what') || 
-        lastLower.includes('how') || lastLower.includes('why')) {
-      // And current message seems to be answering it
-      const answerWords = ['because', 'kyunki', 'isliye', 'that\'s', 'ye hai'];
-      for (const word of answerWords) {
-        if (currentLower.includes(word)) {
-          return true;
-        }
-      }
-    }
-    
-    return false;
-  }
-
-  /**
-   * Check if current message continues the same topic
-   * @param {string} currentMessage - Current user message
-   * @param {Array} previousMessages - Previous messages in session
-   * @returns {boolean} Whether it's a topic continuation
-   */
-  isTopicContinuation(currentMessage, previousMessages) {
-    // Check if previousMessages is an array
-    if (!Array.isArray(previousMessages) || previousMessages.length < 2) return false;
-    
-    // Get keywords from recent messages
-    const recentMessages = previousMessages.slice(-3);
-    // Filter out messages without content and extract content safely
-    const validMessages = recentMessages.filter(msg => msg && msg.content);
-    const allContent = validMessages.map(msg => msg.content).join(' ');
-    
-    // If no valid messages with content, return false
-    if (!allContent) return false;
-    
-    const keywords = this.extractKeywords(allContent);
-    const currentKeywords = this.extractKeywords(currentMessage);
-    
-    // Check overlap
-    const overlap = keywords.filter(keyword => 
-      currentKeywords.some(currentKeyword => 
-        currentKeyword.includes(keyword) || keyword.includes(currentKeyword)
-      )
-    );
-    
-    // If more than 30% overlap, consider it topic continuation
-    return overlap.length / Math.max(keywords.length, 1) > 0.3;
-  }
-
-  /**
-   * Check if current message references previous content
-   * @param {string} currentMessage - Current user message
-   * @param {Array} previousMessages - Previous messages in session
-   * @returns {boolean} Whether it references previous content
-   */
-  hasReferenceToPreviousContent(currentMessage, previousMessages) {
-    // Check if previousMessages is an array
-    if (!Array.isArray(previousMessages)) return false;
-    
-    const currentLower = currentMessage.toLowerCase();
-    const referencePhrases = [
-      'as i said', 'jaisa maine kaha', 'like i mentioned', 
-      'as mentioned', 'jaise maine bataya', 'what you said',
-      'aapne kaha', 'tumne bola', 'you said', 'earlier you',
-      'pichle sawal', 'previous question', 'last time'
-    ];
-    
-    for (const phrase of referencePhrases) {
-      if (currentLower.includes(phrase)) {
-        return true;
-      }
-    }
-    
-    return false;
-  }
-
-  /**
-   * Get the language of the referenced message
-   * @param {string} currentMessage - Current user message
-   * @param {Array} previousMessages - Previous messages in session
-   * @returns {Object} Language analysis of referenced message
-   */
-  getReferencedLanguage(currentMessage, previousMessages) {
-    // Check if previousMessages is an array
-    if (!Array.isArray(previousMessages) || previousMessages.length === 0) {
-      return { language: 'english', confidence: 0.5 };
-    }
-    
-    // For simplicity, use the language of the last message
-    const lastMessage = previousMessages[previousMessages.length - 1];
-    // Check if lastMessage exists and has content
-    if (lastMessage && lastMessage.content) {
-      return this.analyzeLanguageStyle(lastMessage.content);
-    }
-    
-    return { language: 'english', confidence: 0.5 };
-  }
-
-  /**
-   * Get dominant language in recent messages
-   * @param {Array} previousMessages - Previous messages in session
-   * @returns {Object} Dominant language analysis
-   */
-  getDominantLanguage(previousMessages) {
-    // Check if previousMessages is an array
-    if (!Array.isArray(previousMessages) || previousMessages.length === 0) {
-      return { language: 'english', confidence: 0.5 };
-    }
-    
-    // Analyze languages in recent messages
-    const languageCounts = {};
-    previousMessages.slice(-5).forEach(msg => {
-      // Check if message exists and has content
-      if (msg && msg.content) {
-        const analysis = this.analyzeLanguageStyle(msg.content);
-        const lang = analysis.language;
-        languageCounts[lang] = (languageCounts[lang] || 0) + 1;
-      }
-    });
-    
-    // Find dominant language
-    let dominantLanguage = 'english';
-    let maxCount = 0;
-    
-    for (const [lang, count] of Object.entries(languageCounts)) {
-      if (count > maxCount) {
-        dominantLanguage = lang;
-        maxCount = count;
-      }
-    }
-    
-    return {
-      language: dominantLanguage,
-      confidence: maxCount / Math.min(previousMessages.length, 5)
-    };
-  }
-
-  /**
-   * Extract keywords from text
-   * @param {string} text - Input text
-   * @returns {Array} Extracted keywords
-   */
-  extractKeywords(text) {
-    // Simple keyword extraction - remove common words and split
-    const commonWords = [
-      'the', 'and', 'is', 'are', 'was', 'were', 'have', 'has', 'had',
-      'will', 'would', 'can', 'could', 'should', 'may', 'might', 'this',
-      'that', 'these', 'those', 'what', 'when', 'where', 'why', 'how',
-      'mein', 'hai', 'hain', 'ka', 'ke', 'ki', 'ko', 'se', 'par',
-      'है', 'हैं', 'का', 'के', 'की', 'में', 'से', 'को', 'पर'
-    ];
-    
-    return text.toLowerCase()
-      .replace(/[^\w\s]/g, '') // Remove punctuation
-      .split(/\s+/) // Split by whitespace
-      .filter(word => word.length > 2) // Only words with 3+ characters
-      .filter(word => !commonWords.includes(word)); // Remove common words
-  }
-
-  /**
-   * Analyze user behavior patterns for adaptive responses
-   * @param {string} sessionId - Session identifier
-   * @param {string} userMessage - Current user message
-   * @param {Object} context - Context including previous messages and user profile
-   * @returns {Object} Behavior analysis results
-   */
-  analyzeUserBehavior(sessionId, userMessage, context) {
-    // Initialize session behavior tracking if not exists
-    if (!this.sessionInteractionHistory.has(sessionId)) {
-      this.sessionInteractionHistory.set(sessionId, {
-        interactions: [],
-        startTime: Date.now(),
-        messageCount: 0,
-        avgResponseTime: 0,
-        preferredTopics: new Set(),
-        questionPatterns: [],
-        responseLengthPreferences: []
-      });
-    }
-    
-    const sessionHistory = this.sessionInteractionHistory.get(sessionId);
-    
-    // Track interaction
-    const interaction = {
-      timestamp: Date.now(),
-      message: userMessage,
-      messageType: this.classifyMessageType(userMessage),
-      messageLength: userMessage.length,
-      hasQuestion: userMessage.includes('?'),
-      topics: this.extractTopics(userMessage)
-    };
-    
-    sessionHistory.interactions.push(interaction);
-    sessionHistory.messageCount++;
-    
-    // Update average response time
-    if (sessionHistory.interactions.length > 1) {
-      const lastInteraction = sessionHistory.interactions[sessionHistory.interactions.length - 2];
-      const responseTime = interaction.timestamp - lastInteraction.timestamp;
-      sessionHistory.avgResponseTime = (sessionHistory.avgResponseTime * (sessionHistory.interactions.length - 2) + responseTime) / (sessionHistory.interactions.length - 1);
-    }
-    
-    // Track preferred topics
-    interaction.topics.forEach(topic => sessionHistory.preferredTopics.add(topic));
-    
-    // Track question patterns
-    if (interaction.hasQuestion) {
-      const questionType = this.classifyQuestionType(userMessage);
-      sessionHistory.questionPatterns.push(questionType);
-    }
-    
-    // Track response length preferences
-    sessionHistory.responseLengthPreferences.push(
-      userMessage.length < 50 ? 'brief' : 
-      userMessage.length > 200 ? 'detailed' : 'medium'
-    );
-    
-    // Analyze behavior patterns
-    const behaviorPatterns = {
-      sessionDuration: Date.now() - sessionHistory.startTime,
-      messageFrequency: sessionHistory.messageCount / ((Date.now() - sessionHistory.startTime) / 60000), // messages per minute
-      avgResponseTime: sessionHistory.avgResponseTime,
-      preferredTopics: Array.from(sessionHistory.preferredTopics),
-      dominantQuestionType: this.getDominantElement(sessionHistory.questionPatterns),
-      preferredResponseLength: this.getDominantElement(sessionHistory.responseLengthPreferences),
-      interactionStyle: this.determineInteractionStyle(sessionHistory),
-      learningSpeed: this.estimateLearningSpeed(sessionHistory)
-    };
-    
-    // Store behavior patterns for this user
-    this.userBehaviorPatterns.set(sessionId, behaviorPatterns);
-    
-    return behaviorPatterns;
-  }
-
-  /**
-   * Classify message type based on content
-   * @param {string} message - User message
-   * @returns {string} Message type
-   */
-  classifyMessageType(message) {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('?')) return 'question';
-    if (lowerMessage.startsWith('/')) return 'command';
-    if (lowerMessage.includes('thanks') || lowerMessage.includes('thank you')) return 'gratitude';
-    if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('assalam')) return 'greeting';
-    if (lowerMessage.includes('yes') || lowerMessage.includes('no')) return 'confirmation';
-    
-    return 'statement';
-  }
-
-  /**
-   * Extract topics from message
-   * @param {string} message - User message
-   * @returns {Array} Array of topics
-   */
-  extractTopics(message) {
-    const topics = [];
-    const lowerMessage = message.toLowerCase();
-    
-    // Islamic topics
-    if (lowerMessage.includes('quran') || lowerMessage.includes('surah') || lowerMessage.includes('ayah')) {
-      topics.push('quran');
-    }
-    if (lowerMessage.includes('hadith') || lowerMessage.includes('sunnah') || lowerMessage.includes('prophet')) {
-      topics.push('hadith');
-    }
-    if (lowerMessage.includes('prayer') || lowerMessage.includes('namaz') || lowerMessage.includes('salah')) {
-      topics.push('prayer');
-    }
-    if (lowerMessage.includes('fasting') || lowerMessage.includes('roza') || lowerMessage.includes('ramadan')) {
-      topics.push('fasting');
-    }
-    if (lowerMessage.includes('zakat') || lowerMessage.includes('charity')) {
-      topics.push('zakat');
-    }
-    if (lowerMessage.includes('hajj') || lowerMessage.includes('pilgrimage')) {
-      topics.push('hajj');
-    }
-    if (lowerMessage.includes('family') || lowerMessage.includes('children') || lowerMessage.includes('parents')) {
-      topics.push('family');
-    }
-    
-    return topics.length > 0 ? topics : ['general'];
-  }
-
-  /**
-   * Classify question type
-   * @param {string} message - User message
-   * @returns {string} Question type
-   */
-  classifyQuestionType(message) {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('what')) return 'what';
-    if (lowerMessage.includes('why')) return 'why';
-    if (lowerMessage.includes('how')) return 'how';
-    if (lowerMessage.includes('when')) return 'when';
-    if (lowerMessage.includes('where')) return 'where';
-    if (lowerMessage.includes('who')) return 'who';
-    
-    return 'other';
-  }
-
-  /**
-   * Get dominant element in array
-   * @param {Array} array - Input array
-   * @returns {*} Dominant element
-   */
-  getDominantElement(array) {
-    if (array.length === 0) return null;
-    
-    const frequency = {};
-    let maxFreq = 0;
-    let dominant = array[0];
-    
-    for (const element of array) {
-      frequency[element] = (frequency[element] || 0) + 1;
-      if (frequency[element] > maxFreq) {
-        maxFreq = frequency[element];
-        dominant = element;
-      }
-    }
-    
-    return dominant;
-  }
-
-  /**
-   * Determine interaction style based on session history
-   * @param {Object} sessionHistory - Session history data
-   * @returns {string} Interaction style
-   */
-  determineInteractionStyle(sessionHistory) {
-    // Analyze message frequency
-    if (sessionHistory.messageFrequency > 5) return 'rapid';
-    if (sessionHistory.messageFrequency > 2) return 'moderate';
-    return 'slow';
-    
-    // Could be enhanced with more sophisticated analysis
-  }
-
-  /**
-   * Estimate user's learning speed
-   * @param {Object} sessionHistory - Session history data
-   * @returns {string} Learning speed category
-   */
-  estimateLearningSpeed(sessionHistory) {
-    // Simple estimation based on topic variety and question patterns
-    const topicVariety = sessionHistory.preferredTopics.size;
-    const questionVariety = new Set(sessionHistory.questionPatterns).size;
-    
-    if (topicVariety > 3 && questionVariety > 2) return 'fast';
-    if (topicVariety > 1 && questionVariety > 1) return 'moderate';
-    return 'slow';
-  }
-
 }

@@ -43,9 +43,6 @@ export class MultiKVSessionManager {
       failureUntil: 0
     }));
     this.failureCooldownMs = 60 * 1000; // 1 minute
-    
-    // Connection pooling for performance
-    this.connectionPool = [];
   }
 
   /**

@@ -4,9 +4,6 @@ export class D1MemoryManager {
   constructor(db, env) {
     this.db = db; // Cloudflare D1 binding
     this.env = env; // Environment variables for encryption key
-    
-    // Connection pooling for performance
-    this.connectionPool = [];
   }
 
   // Helper method to encrypt data
@@ -341,12 +338,12 @@ export class D1MemoryManager {
     // For now, create a simple summary by extracting key points
     // In a production environment, this would use an AI model to generate a proper summary
     const userMessages = conversationHistory
-      .filter(msg => msg.role === 'user' && msg.content)
+      .filter(msg => msg.role === 'user')
       .map(msg => msg.content)
       .slice(-5); // Last 5 user messages
       
     const aiMessages = conversationHistory
-      .filter(msg => msg.role === 'assistant' && msg.content)
+      .filter(msg => msg.role === 'assistant')
       .map(msg => msg.content)
       .slice(-5); // Last 5 AI responses
       
