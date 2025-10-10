@@ -282,7 +282,8 @@ export class IslamicPrompt {
     this.greetingSystem = new IslamicGreetingSystem();
     
     // Initialize context integrator for DSA-based intelligent integration
-    this.contextIntegrator = new ContextIntegrator();
+    // Pass this instance to avoid circular dependency
+    this.contextIntegrator = new ContextIntegrator(this);
     
     // Embedded prompt data since we can't read from file system in Cloudflare Workers
     this.promptData = {
@@ -416,6 +417,50 @@ export class IslamicPrompt {
       'how to', 'what should', 'advice', 'guidance', 'help', 'problem', 'difficulty',
       'struggle', 'challenge', 'decision', 'choice', 'right path', 'wisdom'
     ]);
+    
+    // Enhanced Islamic topic classification for deeper understanding
+    this.islamicTopicClassification = {
+      'quranic_studies': {
+        keywords: ['quran', 'surah', 'ayah', 'verse', 'recitation', 'tilawah', 'revelation', 'qur\'an'],
+        weight: 1.0
+      },
+      'hadith_studies': {
+        keywords: ['hadith', 'sunnah', 'prophet', 'sahih', 'narration', 'authentic', 'bukhari', 'muslim'],
+        weight: 1.0
+      },
+      'fiqh_jurisprudence': {
+        keywords: ['fiqh', 'halal', 'haram', 'ruling', 'judgment', 'legal', 'madhhab', 'hanafi', 'shafi', 'maliki', 'hanbali'],
+        weight: 1.0
+      },
+      'seerah_history': {
+        keywords: ['seerah', 'history', 'battle', 'migration', 'hijrah', 'companions', 'khilafah', 'caliph'],
+        weight: 0.9
+      },
+      'spiritual_development': {
+        keywords: ['iman', 'faith', 'taqwa', 'repentance', 'dua', 'supplication', 'dhikr', 'remembrance'],
+        weight: 0.9
+      },
+      'daily_practice': {
+        keywords: ['prayer', 'namaz', 'wudu', 'fasting', 'roza', 'zakat', 'hajj', 'pilgrimage'],
+        weight: 1.0
+      },
+      'ethics_morality': {
+        keywords: ['ethics', 'morals', 'character', 'adab', 'manners', 'virtue', 'patience', 'gratitude'],
+        weight: 0.8
+      },
+      'contemporary_issues': {
+        keywords: ['modern', 'today', 'current', 'now', '21st century', 'contemporary', 'technology', 'social media'],
+        weight: 0.7
+      },
+      'family_relations': {
+        keywords: ['family', 'children', 'parent', 'husband', 'wife', 'marriage', 'divorce', 'inheritance'],
+        weight: 0.8
+      },
+      'business_finance': {
+        keywords: ['business', 'trade', 'investment', 'riba', 'interest', 'halal income', 'zakat calculation'],
+        weight: 0.8
+      }
+    };
   }
 
   /**
@@ -501,20 +546,72 @@ export class IslamicPrompt {
     return { isValid: true };
   }
 
+  /**
+   * Enhanced query classification with deep semantic understanding
+   * @param {string} userInput - User input to classify
+   * @returns {Object} Classification result with topic and confidence
+   */
   classifyQuery(userInput) {
     const lowerInput = userInput.toLowerCase();
+    const classification = {
+      topic: 'general',
+      confidence: 0.5,
+      subtopics: [],
+      complexity: 'simple'
+    };
     
-    // Simple classification based on keywords
-    if (this.islamicGuidanceKeywords.has(lowerInput.split(' ')[0]) || 
-        Array.from(this.islamicGuidanceKeywords).some(keyword => lowerInput.includes(keyword))) {
-      return 'fiqh';
+    // Track scores for each topic
+    const topicScores = {};
+    
+    // Calculate scores for each Islamic topic
+    Object.entries(this.islamicTopicClassification).forEach(([topic, data]) => {
+      let score = 0;
+      const words = lowerInput.split(/\s+/);
+      
+      // Word matching score
+      const matchedKeywords = data.keywords.filter(keyword => lowerInput.includes(keyword));
+      score += matchedKeywords.length * data.weight;
+      
+      // Bonus for exact matches at beginning or end
+      if (matchedKeywords.some(keyword => 
+        lowerInput.startsWith(keyword) || lowerInput.endsWith(keyword))) {
+        score += 0.5 * data.weight;
+      }
+      
+      topicScores[topic] = score;
+    });
+    
+    // Find the topic with highest score
+    let maxScore = 0;
+    let bestTopic = 'general';
+    
+    Object.entries(topicScores).forEach(([topic, score]) => {
+      if (score > maxScore) {
+        maxScore = score;
+        bestTopic = topic;
+      }
+    });
+    
+    // Set classification based on scores
+    if (maxScore > 0) {
+      classification.topic = bestTopic;
+      classification.confidence = Math.min(1.0, maxScore / 5); // Normalize score
+      classification.subtopics = Object.entries(topicScores)
+        .filter(([topic, score]) => score > 0 && topic !== bestTopic)
+        .map(([topic, score]) => topic);
     }
     
-    if (Array.from(this.spiritualKeywords).some(keyword => lowerInput.includes(keyword))) {
-      return 'spiritual';
+    // Determine complexity based on input length and question marks
+    const wordCount = lowerInput.split(/\s+/).length;
+    const questionCount = (lowerInput.match(/\?/g) || []).length;
+    
+    if (wordCount > 20 || questionCount > 2) {
+      classification.complexity = 'complex';
+    } else if (wordCount > 10 || questionCount > 1) {
+      classification.complexity = 'moderate';
     }
     
-    return 'general';
+    return classification;
   }
 
   /**
@@ -547,12 +644,25 @@ You are IslamicAI, a Modern Islamic AI Agent with:
    - Make explanations relatable and insightful
    - Maintain a friendly, knowledgeable, and authoritative tone
 
-4. PRACTICAL GUIDANCE
+4. COMPREHENSIVE ANSWERS
+   - Provide full, detailed answers to every question without omitting important information
+   - When a question has multiple aspects, address each aspect thoroughly
+   - Include relevant background information to ensure complete understanding
+   - Use examples and analogies to clarify complex concepts
+   - Anticipate follow-up questions and address them proactively
+   - Ensure responses are self-contained and don't require additional context
+   - For complex topics, break down information into digestible sections
+   - Always cite authentic Islamic sources (Quran, Hadith, scholarly consensus)
+   - When discussing jurisprudence, explain the reasoning behind different opinions
+   - For practical questions, provide step-by-step guidance when applicable
+   - NEVER truncate or shorten responses - always provide the complete answer regardless of length
+
+5. PRACTICAL GUIDANCE
    - Provide advice applicable to real-life situations
    - Offer solutions that remain within Islamic boundaries
    - Bridge ancient wisdom with contemporary challenges
 
-Remember: Your purpose is to empower users with modern Islamic knowledge, combining faith, reason, and practical guidance to make Islam understandable and relevant in today's world.`;
+Remember: Your purpose is to empower users with modern Islamic knowledge, combining faith, reason, and practical guidance to make Islam understandable and relevant in today's world. Always provide comprehensive, detailed answers that fully address the user's question.`;
   }
 
   /**
@@ -667,12 +777,51 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
   }
   
   /**
-   * Get context-integrated prompt with intelligent prioritization
+   * Get comprehensive answer enforcement instruction
+   * @returns {string} Comprehensive answer enforcement guidance
+   */
+  getComprehensiveAnswerEnforcement() {
+    return `
+
+**📚 COMPREHENSIVE ANSWER ENFORCEMENT**
+- Provide FULL, detailed answers to every question without omitting important information
+- When a question has multiple aspects, address each aspect thoroughly
+- Include relevant background information to ensure complete understanding
+- Use examples and analogies to clarify complex concepts
+- Anticipate follow-up questions and address them proactively
+- Ensure responses are self-contained and don't require additional context
+- For complex topics, break down information into digestible sections
+- Always cite authentic Islamic sources (Quran, Hadith, scholarly consensus)
+- When discussing jurisprudence, explain the reasoning behind different opinions
+- For practical questions, provide step-by-step guidance when applicable`;
+  }
+  
+  /**
+   * Get enhanced response structure for better understanding with deeper semantic analysis
+   * @returns {string} Enhanced response structure guidance
+   */
+  getEnhancedResponseStructure() {
+    return `
+**ENHANCED RESPONSE STRUCTURE FOR ISLAMIC GUIDANCE:**
+1. DIRECT ANSWER: Provide a clear, comprehensive answer to the main question with detailed Quranic/Hadith references
+2. ISLAMIC FOUNDATION: Reference multiple relevant Quranic verses and Hadith with proper citations and context
+3. SCHOLARLY PERSPECTIVE: Mention different scholarly opinions when relevant (Hanafi, Shafi'i, Maliki, Hanbali) with explanations
+4. PRACTICAL APPLICATION: Provide detailed guidance on how to apply the knowledge in daily life with examples
+5. CONTEMPORARY RELEVANCE: Connect the guidance to modern life with specific examples and scenarios
+6. ETHICAL CONSIDERATIONS: Address all moral and ethical dimensions of the question with Islamic principles
+7. SPIRITUAL BENEFITS: Highlight the spiritual growth opportunities in following the guidance with practical tips
+8. CONCLUSION: Summarize key points and provide a clear takeaway message
+9. ADDITIONAL RESOURCES: When appropriate, suggest related topics for further learning`;
+  }
+  
+  /**
+   * Get context-integrated prompt with intelligent prioritization and behavioral insights
    * @param {string} currentMessage - Current user message
    * @param {Array} pastContext - Array of past context items
+   * @param {Object} languagePreferences - User's language preferences
    * @returns {string} Integrated prompt with prioritization
    */
-  getContextIntegratedPrompt(currentMessage, pastContext = []) {
+  getContextIntegratedPrompt(currentMessage, pastContext = [], languagePreferences = null) {
     // Analyze contextual connections
     const analysisResults = this.contextIntegrator.analyzeContextualConnections(
       currentMessage, 
@@ -683,7 +832,8 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
     const integratedContext = this.contextIntegrator.integrateContext(
       currentMessage, 
       pastContext, 
-      analysisResults
+      analysisResults,
+      languagePreferences
     );
     
     // Build base prompt
@@ -694,6 +844,38 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
     
     // Add universal Quran inclusion instruction
     prompt += this.getUniversalQuranInclusionInstruction();
+    
+    // Add comprehensive answer enforcement
+    prompt += this.getComprehensiveAnswerEnforcement();
+    
+    // Add enhanced response structure for better understanding with deeper semantic analysis
+    prompt += '\n\n' + this.getEnhancedResponseStructure();
+    
+    // Add enhanced Islamic topic classification for deeper understanding
+    prompt += '\n\n**ENHANCED ISLAMIC TOPIC CLASSIFICATION:**';
+    prompt += '\n- When addressing Fiqh questions, clearly state the ruling (hukm) and mention different scholarly opinions';
+    prompt += '\n- For Quranic studies, provide context of revelation (asbab al-nuzul) and relevant tafsir';
+    prompt += '\n- For Hadith studies, verify authenticity and provide relevant commentary';
+    prompt += '\n- For Seerah questions, connect historical events to contemporary lessons';
+    prompt += '\n- For spiritual development, emphasize the connection between actions and spiritual growth';
+    prompt += '\n- For contemporary issues, ground solutions in Islamic principles while addressing modern contexts';
+    
+    // NEW: Add behavioral adaptation instructions
+    prompt += '\n\n**BEHAVIORAL ADAPTATION INSTRUCTIONS:**';
+    prompt += '\n- Adapt response style based on user\'s interaction patterns and preferences';
+    prompt += '\n- Adjust complexity level according to user\'s learning progress';
+    prompt += '\n- Match the user\'s communication style (formal, casual, direct, etc.)';
+    prompt += '\n- Provide examples when user prefers them, avoid when they don\'t';
+    prompt += '\n- Respond with appropriate emotional tone based on user\'s emotional context';
+    prompt += '\n- Maintain consistency with previously identified user preferences';
+    
+    // NEW: Add learning progression guidance
+    prompt += '\n\n**LEARNING PROGRESSION GUIDANCE:**';
+    prompt += '\n- For beginners, provide foundational explanations and avoid complex terminology';
+    prompt += '\n- For intermediate learners, build upon existing knowledge with deeper insights';
+    prompt += '\n- For advanced learners, offer scholarly perspectives and nuanced discussions';
+    prompt += '\n- Recognize when to scaffold learning versus when to challenge understanding';
+    prompt += '\n- Acknowledge user\'s progress and encourage continued learning';
     
     return prompt;
   }

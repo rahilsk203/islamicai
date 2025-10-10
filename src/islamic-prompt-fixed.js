@@ -212,12 +212,12 @@ export class IslamicGreetingSystem {
    */
   getGreetingBlessing(language) {
     const blessings = {
-      'english': "🤲 May Allah bless our conversation with knowledge, wisdom, and guidance.",
-      'hindi': "🤲 अल्लाह हमारी बातचीत को ज्ञान, बुद्धि और मार्गदर्शन से नवाज़े।",
-      'urdu': "🤲 اللہ ہماری بات چیت کو علم، حکمت اور ہدایت سے نوازے۔",
-      'persian': "🤲 خداوند گفتگوی ما را با دانش، حکمت و هدایت برکت دهد.",
-      'bengali': "🤲 আল্লাহ আমাদের কথোপকথনকে জ্ঞান, প্রজ্ঞা এবং পথনির্দেশনার সাথে ধন্য করুন।",
-      'hinglish': "🤲 Allah humari baat ko ilm, hikmat aur guidance se nawaaze."
+      'english': "pliant May Allah bless our conversation with knowledge, wisdom, and guidance.",
+      'hindi': "pliant अल्लाह हमारी बातचीत को ज्ञान, बुद्धि और मार्गदर्शन से नवाज़े।",
+      'urdu': "pliant اللہ ہماری بات چیت کو علم، حکمت اور ہدایت سے نوازے۔",
+      'persian': "pliant خداوند گفتگوی ما را با دانش، حکمت و هدایت برکت دهد.",
+      'bengali': "pliant আল্লাহ আমাদের কথোপকথনকে জ্ঞান, প্রজ্ঞা এবং পথনির্দেশনার সাথে ধন্য করুন।",
+      'hinglish': "pliant Allah humari baat ko ilm, hikmat aur guidance se nawaaze."
     };
     
     return blessings[language] || blessings['english'];
@@ -547,12 +547,25 @@ You are IslamicAI, a Modern Islamic AI Agent with:
    - Make explanations relatable and insightful
    - Maintain a friendly, knowledgeable, and authoritative tone
 
-4. PRACTICAL GUIDANCE
+4. COMPREHENSIVE ANSWERS
+   - Provide full, detailed answers to every question without omitting important information
+   - When a question has multiple aspects, address each aspect thoroughly
+   - Include relevant background information to ensure complete understanding
+   - Use examples and analogies to clarify complex concepts
+   - Anticipate follow-up questions and address them proactively
+   - Ensure responses are self-contained and don't require additional context
+   - For complex topics, break down information into digestible sections
+   - Always cite authentic Islamic sources (Quran, Hadith, scholarly consensus)
+   - When discussing jurisprudence, explain the reasoning behind different opinions
+   - For practical questions, provide step-by-step guidance when applicable
+   - NEVER truncate or shorten responses - always provide the complete answer regardless of length
+
+5. PRACTICAL GUIDANCE
    - Provide advice applicable to real-life situations
    - Offer solutions that remain within Islamic boundaries
    - Bridge ancient wisdom with contemporary challenges
 
-Remember: Your purpose is to empower users with modern Islamic knowledge, combining faith, reason, and practical guidance to make Islam understandable and relevant in today's world.`;
+Remember: Your purpose is to empower users with modern Islamic knowledge, combining faith, reason, and practical guidance to make Islam understandable and relevant in today's world. Always provide comprehensive, detailed answers that fully address the user's question.`;
   }
 
   /**
@@ -655,6 +668,44 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
   }
   
   /**
+   * Get comprehensive answer enforcement instruction
+   * @returns {string} Comprehensive answer enforcement guidance
+   */
+  getComprehensiveAnswerEnforcement() {
+    return `
+
+**📚 COMPREHENSIVE ANSWER ENFORCEMENT**
+- Provide FULL, detailed answers to every question without omitting important information
+- When a question has multiple aspects, address each aspect thoroughly
+- Include relevant background information to ensure complete understanding
+- Use examples and analogies to clarify complex concepts
+- Anticipate follow-up questions and address them proactively
+- Ensure responses are self-contained and don't require additional context
+- For complex topics, break down information into digestible sections
+- Always cite authentic Islamic sources (Quran, Hadith, scholarly consensus)
+- When discussing jurisprudence, explain the reasoning behind different opinions
+- For practical questions, provide step-by-step guidance when applicable`;
+  }
+  
+  /**
+   * Get enhanced response structure for better understanding with deeper semantic analysis
+   * @returns {string} Enhanced response structure guidance
+   */
+  getEnhancedResponseStructure() {
+    return `
+**ENHANCED RESPONSE STRUCTURE FOR ISLAMIC GUIDANCE:**
+1. DIRECT ANSWER: Provide a clear, comprehensive answer to the main question with detailed Quranic/Hadith references
+2. ISLAMIC FOUNDATION: Reference multiple relevant Quranic verses and Hadith with proper citations and context
+3. SCHOLARLY PERSPECTIVE: Mention different scholarly opinions when relevant (Hanafi, Shafi'i, Maliki, Hanbali) with explanations
+4. PRACTICAL APPLICATION: Provide detailed guidance on how to apply the knowledge in daily life with examples
+5. CONTEMPORARY RELEVANCE: Connect the guidance to modern life with specific examples and scenarios
+6. ETHICAL CONSIDERATIONS: Address all moral and ethical dimensions of the question with Islamic principles
+7. SPIRITUAL BENEFITS: Highlight the spiritual growth opportunities in following the guidance with practical tips
+8. CONCLUSION: Summarize key points and provide a clear takeaway message
+9. ADDITIONAL RESOURCES: When appropriate, suggest related topics for further learning`;
+  }
+  
+  /**
    * Get context-integrated prompt with intelligent prioritization
    * @param {string} currentMessage - Current user message
    * @param {Array} pastContext - Array of past context items
@@ -682,6 +733,12 @@ Remember: Your purpose is to empower users with modern Islamic knowledge, combin
     
     // Add universal Quran inclusion instruction
     prompt += this.getUniversalQuranInclusionInstruction();
+    
+    // Add comprehensive answer enforcement
+    prompt += this.getComprehensiveAnswerEnforcement();
+    
+    // Add enhanced response structure
+    prompt += '\n\n' + this.getEnhancedResponseStructure();
     
     return prompt;
   }

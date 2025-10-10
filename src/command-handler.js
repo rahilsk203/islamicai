@@ -207,7 +207,10 @@ IslamicAI remembers your preferences, important information, and conversation co
       if (topMemories.length > 0) {
         memoryText += `\n⭐ Most Accessed Memories:\n`;
         topMemories.forEach((memory, index) => {
-          memoryText += `${index + 1}. ${memory.content.substring(0, 50)}... (${memory.accessCount} times)\n`;
+          // Check if memory has content before accessing it
+          if (memory.content) {
+            memoryText += `${index + 1}. ${memory.content.substring(0, 50)}... (${memory.accessCount} times)\n`;
+          }
         });
       }
       
